@@ -1,0 +1,8 @@
+{
+  "name": "ok taenga poya parsa",
+  "description": "سیستم جامع و هوشمند مدیریت فروشگاه، انبارداری و حسابداری با نام تجاری کاسب یار.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
