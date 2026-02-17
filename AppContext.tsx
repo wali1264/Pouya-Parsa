@@ -96,6 +96,9 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Unique Role ID for the Gmail Owner to avoid collision with custom 'Admin' roles
+const SYSTEM_SUPER_OWNER_ID = 'system-super-owner';
+
 const getDeviceId = () => {
     let id = localStorage.getItem('kasebyar_device_id');
     if (!id) {
@@ -142,7 +145,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [isShopActive, setIsShopActive] = useState(() => localStorage.getItem('kasebyar_shop_active') === 'true');
     const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => localStorage.getItem('kasebyar_auto_backup') === 'true');
-    const isFirstLoad = useRef(true);
 
     const showToast = useCallback((message: string) => {
         console.log("Toast:", message);
@@ -164,43 +166,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ]);
 
             const { data: { session } } = await supabase.auth.getSession();
+            const isSessionLocked = localStorage.getItem('kasebyar_session_locked') === 'true';
+            
+            // Critical Update: Shop is active if there's a Supabase session (Gmail owner)
+            const shopStatus = !!session?.user;
+            localStorage.setItem('kasebyar_shop_active', String(shopStatus));
+            setIsShopActive(shopStatus);
+
             let isAuth = false;
             let restoredUser = null;
 
-            const isSessionLocked = localStorage.getItem('kasebyar_session_locked') === 'true';
-
-            if (session?.user && !isSessionLocked) {
-                const profile = await api.getProfile(session.user.id);
-                const deviceId = getDeviceId();
-                
-                if (profile && profile.is_approved) {
-                    if (!profile.current_device_id || profile.current_device_id === deviceId) {
-                        isAuth = true;
-                        restoredUser = { id: session.user.id, username: session.user.email || 'Admin', roleId: 'admin-role' };
-                        
-                        if (!profile.current_device_id) {
-                            await api.updateProfile(session.user.id, { current_device_id: deviceId });
-                        }
-                        localStorage.setItem('kasebyar_shop_active', 'true');
-                        setIsShopActive(true);
-                    }
-                } else if (!navigator.onLine && localStorage.getItem('kasebyar_offline_auth') === 'true') {
-                    isAuth = true;
-                    restoredUser = { id: session.user.id, username: session.user.email || 'Admin', roleId: 'admin-role' };
-                }
-            } else {
+            if (!isSessionLocked) {
+                // 1. Priority: Check for Staff Identity first
                 const localStaff = localStorage.getItem('kasebyar_staff_user');
-                if (localStaff && !isSessionLocked) {
+                if (localStaff && shopStatus) {
                     try {
                         const parsedStaff = JSON.parse(localStaff) as User;
                         const dbUser = users.find(u => u.id === parsedStaff.id);
-                        if (dbUser && localStorage.getItem('kasebyar_shop_active') === 'true') { 
-                            isAuth = true; 
-                            restoredUser = dbUser; 
-                        } else { 
-                            localStorage.removeItem('kasebyar_staff_user'); 
+                        if (dbUser) {
+                            isAuth = true;
+                            restoredUser = dbUser;
                         }
-                    } catch(e) { localStorage.removeItem('kasebyar_staff_user'); }
+                    } catch(e) {}
+                }
+
+                // 2. Secondary: If no staff logged in, use Owner identity from session
+                if (!restoredUser && session?.user) {
+                    const profile = await api.getProfile(session.user.id);
+                    if (profile?.is_approved) {
+                        isAuth = true;
+                        restoredUser = { 
+                            id: session.user.id, 
+                            username: session.user.email || 'Owner', 
+                            roleId: SYSTEM_SUPER_OWNER_ID 
+                        };
+                    }
                 }
             }
 
@@ -219,7 +219,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 purchaseInvoices: invoices.purchaseInvoices,
                 inTransitInvoices: invoices.inTransitInvoices,
                 activities: activity,
-                saleInvoiceCounter: invoices.saleInvoices.length,
                 isAuthenticated: isAuth,
                 currentUser: restoredUser
             }));
@@ -237,7 +236,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logActivity = useCallback(async (type: ActivityLog['type'], description: string, refId?: string, refType?: ActivityLog['refType']) => {
         if (!state.currentUser) return;
-        const displayName = state.currentUser.roleId === 'admin-role' ? 'مدیر کل' : state.currentUser.username;
+        const displayName = state.currentUser.roleId === SYSTEM_SUPER_OWNER_ID ? 'صاحب فروشگاه' : state.currentUser.username;
         const newActivity: ActivityLog = { id: crypto.randomUUID(), type, description, timestamp: new Date().toISOString(), user: displayName, refId, refType };
         setState(prev => ({ ...prev, activities: [newActivity, ...prev.activities] }));
         try { await api.addActivity(newActivity); } catch (e) {}
@@ -254,6 +253,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const deviceId = getDeviceId();
                 if (profile.current_device_id && profile.current_device_id !== deviceId) return { success: false, message: 'این حساب در دستگاه دیگری فعال است.', locked: true };
                 if (!profile.current_device_id) await api.updateProfile(data.user.id, { current_device_id: deviceId });
+                
                 localStorage.setItem('kasebyar_offline_auth', 'true');
                 localStorage.setItem('kasebyar_shop_active', 'true');
                 localStorage.setItem('kasebyar_session_locked', 'false');
@@ -275,13 +275,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logout = async (type: 'full' | 'switch'): Promise<{ success: boolean; message: string }> => {
         setIsLoggingOut(true);
-        const isStaff = !!localStorage.getItem('kasebyar_staff_user');
-        if (isStaff) {
-            localStorage.removeItem('kasebyar_staff_user');
-            localStorage.setItem('kasebyar_session_locked', 'true');
-            setTimeout(() => { setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); setIsLoggingOut(false); }, 500);
-            return { success: true, message: 'خروج از حساب انجام شد.' };
-        }
+        // Always clear staff identity on any logout
+        localStorage.removeItem('kasebyar_staff_user');
+        
         if (type === 'full') {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
@@ -292,17 +288,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 setIsShopActive(false);
             } catch (e) {}
         }
+        
         localStorage.setItem('kasebyar_session_locked', 'true');
-        setTimeout(() => { setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); setIsLoggingOut(false); }, 500);
-        return { success: true, message: 'خروج موفق' };
+        setTimeout(() => { 
+            setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); 
+            setIsLoggingOut(false); 
+        }, 500);
+        return { success: true, message: 'خروج با موفقیت انجام شد.' };
     };
 
-    // HARDENED PERMISSION LOGIC
+    // HARDENED PERMISSION LOGIC - NO MORE admin-role BYPASS
     const hasPermission = useCallback((permission: Permission): boolean => {
         if (!state.currentUser) return false;
-        // Super Admin Bypass for Store Owner
-        if (state.currentUser.roleId === 'admin-role') return true;
         
+        // 1. Strict Bypass only for System Super Owner (Gmail)
+        if (state.currentUser.roleId === SYSTEM_SUPER_OWNER_ID) return true;
+        
+        // 2. Check Role Array for all others (including 'Admin' role assigned to staff)
         const userRole = state.roles.find(r => r.id === state.currentUser!.roleId);
         if (!userRole || !userRole.permissions) return false;
         
@@ -321,8 +323,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState(prev => {
             const updatedUsers = prev.users.map(u => u.id === userData.id ? { ...u, ...userData } : u);
             let updatedCurrentUser = prev.currentUser;
-            
-            // Critical Sync: Update current session if the edited user is the logged-in person
             if (prev.currentUser?.id === userData.id) {
                 updatedCurrentUser = { ...prev.currentUser, ...userData };
                 if (localStorage.getItem('kasebyar_staff_user')) {
@@ -346,7 +346,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await api.updateRole(roleData);
         setState(prev => {
             const updatedRoles = prev.roles.map(r => r.id === roleData.id ? roleData : r);
-            // Critical Sync: If current user has this role, permissions will refresh on next hasPermission call
             return { ...prev, roles: updatedRoles };
         });
         logActivity('login', `دسترسی‌های نقش ${roleData.name} تغییر یافت.`);

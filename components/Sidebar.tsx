@@ -69,7 +69,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, storeName,
     setShowLogoutMenu(false);
   };
 
-  const isManager = currentUser?.roleId === 'admin-role';
+  // Managers are identified by the 'system-super-owner' role ID
+  const isManager = currentUser?.roleId === 'system-super-owner';
 
   return (
     <>
