@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import type { Supplier, Customer, Employee, AnyTransaction, PayrollTransaction } from '../types';
 import { XIcon, PrintIcon } from './icons';
@@ -36,27 +35,43 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({ perso
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [transactions, dateRange]);
 
-    // Calculate separated balances for Suppliers
+    // Calculate separated balances for Suppliers and Customers
     const balances = useMemo(() => {
-        if (type !== 'supplier') return null;
+        if (type === 'employee') return null;
         
-        let debtAFN = 0;
-        let paidAFN = 0;
-        let debtUSD = 0;
-        let paidUSD = 0;
+        let debtAFN = 0, paidAFN = 0;
+        let debtUSD = 0, paidUSD = 0;
+        let debtIRT = 0, paidIRT = 0;
 
         filteredTransactions.forEach(t => {
-            const isUSD = (t as any).currency === 'USD';
-            if (t.type === 'purchase') {
-                if (isUSD) debtUSD += t.amount; else debtAFN += t.amount;
-            } else if (t.type === 'payment' || t.type === 'purchase_return') {
-                if (isUSD) paidUSD += t.amount; else paidAFN += t.amount;
+            const currency = (t as any).currency || 'AFN';
+            if (type === 'supplier') {
+                if (t.type === 'purchase') {
+                    if (currency === 'USD') debtUSD += t.amount; 
+                    else if (currency === 'IRT') debtIRT += t.amount;
+                    else debtAFN += t.amount;
+                } else if (t.type === 'payment' || t.type === 'purchase_return') {
+                    if (currency === 'USD') paidUSD += t.amount; 
+                    else if (currency === 'IRT') paidIRT += t.amount;
+                    else paidAFN += t.amount;
+                }
+            } else if (type === 'customer') {
+                if (t.type === 'credit_sale') {
+                    if (currency === 'USD') debtUSD += t.amount; 
+                    else if (currency === 'IRT') debtIRT += t.amount;
+                    else debtAFN += t.amount;
+                } else if (t.type === 'payment' || t.type === 'sale_return') {
+                    if (currency === 'USD') paidUSD += t.amount; 
+                    else if (currency === 'IRT') paidIRT += t.amount;
+                    else paidAFN += t.amount;
+                }
             }
         });
 
         return {
             afn: debtAFN - paidAFN,
-            usd: debtUSD - paidUSD
+            usd: debtUSD - paidUSD,
+            irt: debtIRT - paidIRT
         };
     }, [filteredTransactions, type]);
 
@@ -76,29 +91,26 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({ perso
                 {filteredTransactions.map(t => {
                     let debit = 0;
                     let credit = 0;
-                    const currencySymbol = (t as any).currency === 'USD' ? '$' : '';
+                    const currency = (t as any).currency || 'AFN';
+                    const curSuffix = currency === 'USD' ? '$' : (currency === 'IRT' ? 'ت' : '');
                     
                     if (type === 'supplier') {
                         if (t.type === 'purchase') debit = t.amount;
-                        else if (t.type === 'payment') credit = t.amount;
-                        else if (t.type === 'purchase_return') credit = t.amount;
+                        else if (t.type === 'payment' || t.type === 'purchase_return') credit = t.amount;
                     } else if (type === 'customer') {
                         if (t.type === 'credit_sale') debit = t.amount;
-                        else if (t.type === 'payment') credit = t.amount;
-                        else if (t.type === 'sale_return') credit = t.amount;
+                        else if (t.type === 'payment' || t.type === 'sale_return') credit = t.amount;
                     } else if (type === 'employee') {
                         const payrollTx = t as PayrollTransaction;
-                        if (payrollTx.type === 'advance' || payrollTx.type === 'salary_payment') {
-                            debit = payrollTx.amount;
-                        }
+                        if (payrollTx.type === 'advance' || payrollTx.type === 'salary_payment') debit = payrollTx.amount;
                     }
 
                     return (
                         <tr key={t.id} className="hover:bg-blue-50 transition-colors border-b last:border-0">
                             <td data-label="تاریخ" className="p-3 text-slate-600">{new Date(t.date).toLocaleDateString('fa-IR')}</td>
                             <td data-label="شرح" className="p-3 text-slate-800 font-semibold">{t.description}</td>
-                            <td data-label="بدهکار" className="p-3 text-red-600 font-mono" dir="ltr">{debit > 0 ? `${debit.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} ${currencySymbol}` : '-'}</td>
-                            <td data-label="بستانکار" className="p-3 text-green-600 font-mono" dir="ltr">{credit > 0 ? `${credit.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} ${currencySymbol}` : '-'}</td>
+                            <td data-label="بدهکار" className="p-3 text-red-600 font-mono" dir="ltr">{debit > 0 ? `${debit.toLocaleString('fa-IR')} ${curSuffix}` : '-'}</td>
+                            <td data-label="بستانکار" className="p-3 text-green-600 font-mono" dir="ltr">{credit > 0 ? `${credit.toLocaleString('fa-IR')} ${curSuffix}` : '-'}</td>
                             <td className="p-3 actions-cell">
                                 {t.type === 'payment' && (
                                     <button onClick={() => onReprint(t.id)} className="p-2 rounded-full text-gray-500 hover:text-green-600 hover:bg-green-100 transition-colors" title="چاپ مجدد رسید">
@@ -120,20 +132,26 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({ perso
                 <div className="bg-white md:rounded-2xl shadow-2xl border border-gray-200 w-full h-full md:max-w-5xl md:h-[85vh] flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="flex flex-shrink-0 justify-between items-center p-5 border-b border-gray-200 bg-slate-50 sticky top-0 z-20">
-                        <div>
+                        <div className="flex flex-col gap-1">
                             <h2 className="text-xl md:text-2xl font-bold text-slate-800">صورت حساب: {person.name}</h2>
-                            {type === 'supplier' && balances ? (
-                                <div className="flex gap-2 md:gap-4 mt-2 flex-wrap">
-                                    <span className="text-[10px] md:text-sm font-bold text-slate-700 bg-white border px-2 py-1 rounded-lg shadow-sm">
-                                        مانده افغانی: <span dir="ltr" className={balances.afn > 0 ? 'text-red-600' : 'text-green-600'}>{Math.round(balances.afn).toLocaleString()} {storeSettings.currencyName}</span>
-                                    </span>
-                                    <span className="text-[10px] md:text-sm font-bold text-slate-700 bg-white border px-2 py-1 rounded-lg shadow-sm">
-                                        مانده دلاری: <span dir="ltr" className={balances.usd > 0 ? 'text-red-600' : 'text-green-600'}>{Math.round(balances.usd).toLocaleString()} $</span>
-                                    </span>
+                            {type !== 'employee' && balances ? (
+                                <div className="flex gap-2 md:gap-3 mt-1 flex-wrap">
+                                    <div className="bg-white border px-3 py-1 rounded-xl shadow-sm">
+                                        <span className="text-[10px] font-black text-slate-400 block uppercase">افغانی</span>
+                                        <span dir="ltr" className={`font-black ${balances.afn > 0 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(balances.afn).toLocaleString()}</span>
+                                    </div>
+                                    <div className="bg-white border px-3 py-1 rounded-xl shadow-sm">
+                                        <span className="text-[10px] font-black text-slate-400 block uppercase">دلار</span>
+                                        <span dir="ltr" className={`font-black ${balances.usd > 0 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(balances.usd).toLocaleString()}</span>
+                                    </div>
+                                    <div className="bg-white border px-3 py-1 rounded-xl shadow-sm">
+                                        <span className="text-[10px] font-black text-slate-400 block uppercase">تومان</span>
+                                        <span dir="ltr" className={`font-black ${balances.irt > 0 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(balances.irt).toLocaleString()}</span>
+                                    </div>
                                 </div>
                             ) : (
                                 <p className="text-sm md:text-md text-slate-600 mt-1">
-                                    موجودی نهایی: <span dir="ltr" className={`font-black text-base md:text-lg ${person.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatCurrency(Math.abs(person.balance), storeSettings)} {person.balance > 0 ? '(بدهکار)' : '(بستانکار)'}</span>
+                                    موجودی نهایی: <span dir="ltr" className={`font-black text-base md:text-lg ${person.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatCurrency(Math.abs(person.balance), storeSettings)}</span>
                                 </p>
                             )}
                         </div>
@@ -174,10 +192,11 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({ perso
                 >
                     {transactionTable}
                      <div className="mt-6 pt-4 border-t text-left font-bold text-xl">
-                        {type === 'supplier' && balances ? (
+                        {type !== 'employee' && balances ? (
                             <div className="flex flex-col gap-2">
-                                <div>مانده افغانی: <span dir="ltr">{Math.round(balances.afn).toLocaleString()} {storeSettings.currencyName}</span></div>
-                                <div>مانده دلاری: <span dir="ltr">{Math.round(balances.usd).toLocaleString()} $</span></div>
+                                <div>مانده افغانی: <span dir="ltr">{Math.round(balances.afn).toLocaleString()} AFN</span></div>
+                                <div>مانده دلار: <span dir="ltr">{Math.round(balances.usd).toLocaleString()} $</span></div>
+                                <div>مانده تومان: <span dir="ltr">{Math.round(balances.irt).toLocaleString()} IRT</span></div>
                             </div>
                         ) : (
                             <>موجودی نهایی: {formatCurrency(person.balance, storeSettings)}</>

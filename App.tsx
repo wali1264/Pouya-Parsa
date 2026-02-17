@@ -6,6 +6,7 @@ import POS from './pages/POS';
 import Purchases from './pages/Purchases';
 import InTransit from './pages/InTransit';
 import Accounting from './pages/Accounting';
+import SecurityDeposits from './pages/SecurityDeposits';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Reports from './pages/Reports';
@@ -39,6 +40,7 @@ const AppContent: React.FC = () => {
       purchases: hasPermission('page:purchases'),
       in_transit: hasPermission('page:in_transit'),
       accounting: hasPermission('page:accounting'),
+      deposits: hasPermission('page:deposits'),
       reports: hasPermission('page:reports'),
       settings: hasPermission('page:settings'),
   };
@@ -50,6 +52,7 @@ const AppContent: React.FC = () => {
       purchases: 'خرید',
       in_transit: 'اجناس در راه',
       accounting: 'حسابداری',
+      deposits: 'امانات',
       reports: 'گزارشات',
       settings: 'تنظیمات',
   };
@@ -73,6 +76,7 @@ const AppContent: React.FC = () => {
       case 'purchases': return accessiblePages.purchases && <Purchases />;
       case 'in_transit': return accessiblePages.in_transit && <InTransit />;
       case 'accounting': return accessiblePages.accounting && <Accounting />;
+      case 'deposits': return accessiblePages.deposits && <SecurityDeposits />;
       case 'reports': return accessiblePages.reports && <Reports />;
       case 'settings': return accessiblePages.settings && <Settings />;
       default: return accessiblePages.dashboard && <Dashboard />;

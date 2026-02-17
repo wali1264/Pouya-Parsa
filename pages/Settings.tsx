@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { useAppContext } from '../AppContext';
 import type { StoreSettings, Service, Role, User, Permission } from '../types';
@@ -258,7 +257,7 @@ const BackupRestoreTab: React.FC<TabProps> = ({ showToast }) => {
 };
 
 const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
-    const { users, roles, addUser, updateUser, deleteUser, addRole, updateRole, deleteRole } = useAppContext();
+    const { users, roles, addUser, updateUser, deleteUser, addRole, updateRole, deleteRole, currentUser } = useAppContext();
     const [activeSubTab, setActiveSubTab] = useState<'users' | 'roles'>('users');
     
     // Role state
@@ -275,9 +274,14 @@ const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
     const groupedPermissions = groupPermissions(ALL_PERMISSIONS);
     
     const handleEditRole = (role: Role) => {
+        // Prevent editing the core Admin system role for security
+        if (role.id === 'admin-role') {
+            showToast("⚠️ نقش مدیریت کل سیستم غیرقابل تغییر است.");
+            return;
+        }
         setEditingRole(role);
         setRoleName(role.name);
-        setRolePermissions(role.permissions);
+        setRolePermissions(role.permissions || []);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -372,7 +376,7 @@ const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
                                     <button onClick={() => handleEditUser(user)} className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                                         <KeyIcon className="w-5 h-5" />
                                     </button>
-                                    {user.username !== 'admin' && (
+                                    {user.username !== 'admin' && user.id !== currentUser?.id && (
                                         <button onClick={() => deleteUser(user.id)} className="p-2.5 rounded-xl bg-slate-50 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
                                             <TrashIcon className="w-5 h-5" />
                                         </button>
@@ -389,7 +393,13 @@ const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
                     <div className="bg-white p-5 md:p-6 rounded-3xl border border-slate-200">
                         <h4 className="text-lg font-black text-slate-800 mb-6">{editingRole ? 'ویرایش نقش و دسترسی' : 'تعریف نقش جدید'}</h4>
                         <div className="space-y-4">
-                            <input value={roleName} onChange={e => setRoleName(e.target.value)} placeholder="نام نقش (مثلاً: فروشنده)" className="w-full p-3.5 border border-slate-200 rounded-xl mb-2 focus:ring-4 focus:ring-blue-50 outline-none font-black" />
+                            <input 
+                                value={roleName} 
+                                onChange={e => setRoleName(e.target.value)} 
+                                placeholder="نام نقش (مثلاً: فروشنده)" 
+                                className="w-full p-3.5 border border-slate-200 rounded-xl mb-2 focus:ring-4 focus:ring-blue-50 outline-none font-black" 
+                                disabled={editingRole?.id === 'admin-role'}
+                            />
                             
                             <p className="text-xs font-black text-slate-400 mb-4 px-1">انتخاب مجوزهای دسترسی:</p>
                             <div className="space-y-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
@@ -398,12 +408,13 @@ const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
                                         <h5 className="font-black text-slate-700 border-b border-slate-200 pb-2 mb-3 text-sm">{group}</h5>
                                         <div className="space-y-2">
                                             {permissions.map(p => (
-                                                <label key={p.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white transition-colors cursor-pointer group">
+                                                <label key={p.id} className={`flex items-center gap-3 p-2 rounded-xl transition-colors group ${editingRole?.id === 'admin-role' ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white cursor-pointer'}`}>
                                                     <input 
                                                         type="checkbox" 
-                                                        checked={rolePermissions.includes(p.id)} 
+                                                        checked={editingRole?.id === 'admin-role' ? true : rolePermissions.includes(p.id)} 
                                                         onChange={e => handlePermissionChange(p.id, e.target.checked)} 
                                                         className="w-5 h-5 rounded-lg text-blue-600 border-slate-300 focus:ring-blue-500"
+                                                        disabled={editingRole?.id === 'admin-role'}
                                                     />
                                                     <span className="text-sm font-bold text-slate-600 group-hover:text-slate-900">{p.name}</span>
                                                 </label>
@@ -413,7 +424,13 @@ const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
                                 ))}
                             </div>
                              <div className="flex gap-2 mt-6">
-                                <button onClick={handleSaveRole} className="flex-grow py-4 rounded-xl bg-blue-600 text-white font-black text-lg shadow-xl shadow-blue-100 btn-primary active:scale-[0.98]">{editingRole ? 'بروزرسانی نهایی' : 'ذخیره نقش'}</button>
+                                <button 
+                                    onClick={handleSaveRole} 
+                                    className={`flex-grow py-4 rounded-xl font-black text-lg shadow-xl shadow-blue-100 transition-all active:scale-[0.98] ${editingRole?.id === 'admin-role' ? 'bg-slate-300 cursor-not-allowed' : 'bg-blue-600 text-white btn-primary'}`}
+                                    disabled={editingRole?.id === 'admin-role'}
+                                >
+                                    {editingRole ? 'بروزرسانی نهایی' : 'ذخیره نقش'}
+                                </button>
                                 {editingRole && <button onClick={() => {setEditingRole(null); setRoleName(''); setRolePermissions([]);}} className="px-6 rounded-xl bg-slate-100 text-slate-500 font-bold">لغو</button>}
                             </div>
                         </div>
@@ -423,19 +440,23 @@ const UsersAndRolesTab: React.FC<TabProps> = ({ showToast }) => {
                         {roles.map(role => (
                             <div key={role.id} className="flex justify-between items-center p-4 bg-white rounded-2xl border border-slate-100 shadow-sm group">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${role.id === 'admin-role' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500'}`}>
                                         <KeyIcon className="w-5 h-5"/>
                                     </div>
                                     <p className="font-black text-slate-800">{role.name}</p>
                                 </div>
                                 <div className="flex gap-1">
-                                    <button onClick={() => handleEditRole(role)} className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                                        تغییر دسترسی
-                                    </button>
-                                    {role.name !== 'Admin' && (
-                                        <button onClick={() => deleteRole(role.id)} className="p-2.5 rounded-xl bg-slate-50 text-red-400 hover:bg-red-50 transition-colors">
-                                            <TrashIcon className="w-5 h-5" />
-                                        </button>
+                                    {role.id !== 'admin-role' ? (
+                                        <>
+                                            <button onClick={() => handleEditRole(role)} className="p-2.5 rounded-xl bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors text-sm font-bold">
+                                                مدیریت دسترسی
+                                            </button>
+                                            <button onClick={() => deleteRole(role.id)} className="p-2.5 rounded-xl bg-slate-50 text-red-400 hover:bg-red-50 transition-colors">
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <span className="text-[10px] font-black text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">نقش سیستمی</span>
                                     )}
                                 </div>
                             </div>
@@ -485,7 +506,6 @@ const Settings: React.FC = () => {
             <h1 className="text-3xl md:text-4xl font-black text-slate-800 mb-8">مرکز فرماندهی</h1>
 
             <div className="bg-white rounded-3xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col min-h-[65vh]">
-                {/* Scrollable Tabs Bar for Mobile/Desktop Consistency */}
                 <div className="flex border-b border-gray-200/60 p-3 bg-slate-50/50 sticky top-0 z-20 overflow-x-auto no-scrollbar snap-x rounded-t-3xl">
                     <div className="flex gap-2 w-full min-w-max">
                         {accessibleTabs.map(tab => (

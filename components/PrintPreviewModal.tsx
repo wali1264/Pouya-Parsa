@@ -1,10 +1,7 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import type { SaleInvoice, StoreSettings, CartItem, InvoiceItem } from '../types';
+import type { SaleInvoice, StoreSettings, CartItem, InvoiceItem, Customer } from '../types';
 import { XIcon, EditIcon, CheckIcon } from './icons';
 import { useAppContext } from '../AppContext';
-import { formatCurrency } from '../utils/formatters';
-
 
 interface PrintPreviewModalProps {
     invoice: SaleInvoice;
@@ -17,19 +14,17 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
     const [isEditingName, setIsEditingName] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    // Initialize name from registered customer if exists, OR from stored originalInvoiceId if type is 'sale'
+    const customer = useMemo(() => {
+        return invoice.customerId ? customers.find(c => c.id === invoice.customerId) : null;
+    }, [invoice.customerId, customers]);
+
     useEffect(() => {
-        if (invoice.customerId) {
-            const customer = customers.find(c => c.id === invoice.customerId);
-            if (customer) {
-                setCustomCustomerName(customer.name);
-            } else {
-                setCustomCustomerName('مشتری حذف شده');
-            }
+        if (customer) {
+            setCustomCustomerName(customer.name);
         } else if (invoice.type === 'sale') {
             setCustomCustomerName(invoice.originalInvoiceId || '');
         }
-    }, [invoice, customers]);
+    }, [customer, invoice]);
 
     useEffect(() => {
         if (isEditingName && inputRef.current) {
@@ -61,33 +56,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
         onClose();
     };
     
-    const { perceivedSubtotal, perceivedTotalDiscount } = useMemo(() => {
-        let sub = 0;
-        let disc = 0;
-        invoice.items.forEach(item => {
-            const quantity = item.quantity;
-            if (item.type === 'product') {
-                const originalPrice = (item as any).salePrice;
-                const finalPrice = (item as any).finalPrice !== undefined ? (item as any).finalPrice : originalPrice;
-                if (finalPrice > originalPrice) {
-                    sub += finalPrice * quantity;
-                } else {
-                    sub += originalPrice * quantity;
-                    disc += (originalPrice - finalPrice) * quantity;
-                }
-            } else {
-                sub += item.price * quantity;
-            }
-        });
-        return { perceivedSubtotal: sub, perceivedTotalDiscount: disc };
-    }, [invoice.items]);
-
+    const currencySuffix = invoice.currency === 'USD' ? '$' : (invoice.currency === 'IRT' ? 'تومان' : storeSettings.currencyName);
 
     const getItemDetails = (item: CartItem) => {
         const isService = item.type === 'service';
         let itemsPerPack = !isService && (item as InvoiceItem).itemsPerPackage ? (item as InvoiceItem).itemsPerPackage! : 1;
         if (itemsPerPack < 1) itemsPerPack = 1;
         const totalQty = item.quantity;
+        
         let pkgCount = 0, unitCount = 0;
         if (itemsPerPack === 1 || isService) {
             unitCount = totalQty;
@@ -95,18 +71,24 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
             pkgCount = Math.floor(totalQty / itemsPerPack);
             unitCount = totalQty % itemsPerPack;
         }
-        let unitPrice = 0;
-        if (item.type === 'product') {
-            const originalPrice = item.salePrice;
-            const final = item.finalPrice !== undefined ? item.finalPrice : originalPrice;
-            unitPrice = final > originalPrice ? final : originalPrice;
+
+        const rate = invoice.exchangeRate || 1;
+        const currency = invoice.currency;
+
+        let priceAFN = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
+        
+        let unitPriceDisplay = 0;
+        if (invoice.currency === 'AFN') {
+            unitPriceDisplay = priceAFN;
         } else {
-            unitPrice = item.price;
+            unitPriceDisplay = currency === 'IRT' ? priceAFN * rate : priceAFN / rate;
         }
+
         return {
-            isService, itemsPerPack, pkgCount, unitCount, unitPrice,
-            pkgPrice: unitPrice * itemsPerPack,
-            totalPrice: unitPrice * totalQty
+            isService, itemsPerPack, pkgCount, unitCount, 
+            unitPrice: unitPriceDisplay,
+            pkgPrice: unitPriceDisplay * itemsPerPack,
+            totalPrice: unitPriceDisplay * totalQty
         };
     };
 
@@ -125,25 +107,13 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
                         <div className="space-y-0.5 print:space-y-1 w-1/2">
                             <div className="text-sm print:text-md border-b border-slate-300 pb-1 mb-1 flex items-center flex-wrap gap-2 min-h-[24px] print:min-h-[30px]">
                                 <strong>نام مشتری:</strong> 
-                                {isEditingName ? (
-                                    <div className="flex items-center gap-1 no-print">
-                                        <input ref={inputRef} value={customCustomerName} onChange={(e) => setCustomCustomerName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="border border-blue-400 rounded px-2 py-0.5 text-sm w-40" />
-                                        <button onClick={() => setIsEditingName(false)} className="text-green-600 hover:bg-green-100 p-1 rounded"><CheckIcon className="w-4 h-4" /></button>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-2 group">
-                                        <span className="font-bold text-base print:text-lg text-blue-800">{customCustomerName || 'مشتری گذری'}</span>
-                                        <button onClick={() => setIsEditingName(true)} className="text-slate-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity no-print"><EditIcon className="w-4 h-4" /></button>
-                                    </div>
-                                )}
+                                <span className="font-bold text-base print:text-lg text-blue-800">{customCustomerName || 'مشتری گذری'}</span>
                             </div>
                             <p><strong>شماره فاکتور:</strong> <span className="font-mono font-bold">{invoice.id}</span></p>
-                            {/* تغییر به نام فروشگاه بجای ایمیل */}
-                            <p><strong>فروشگاه:</strong> {storeSettings.storeName}</p>
                         </div>
                         <div className="text-left space-y-0.5 print:space-y-1">
                             <p><strong>تاریخ:</strong> {new Date(invoice.timestamp).toLocaleDateString('fa-IR')}</p>
-                            <p><strong>ساعت:</strong> {new Date(invoice.timestamp).toLocaleTimeString('fa-IR')}</p>
+                            <p><strong>ارز معامله:</strong> <span className="font-bold">{invoice.currency}</span></p>
                         </div>
                     </div>
 
@@ -154,7 +124,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
                                     <th rowSpan={2} className="p-1 print:p-2 text-center font-bold border border-slate-400 w-8 print:w-10">#</th>
                                     <th rowSpan={2} className="p-1 print:p-2 text-right font-bold border border-slate-400">شرح کالا</th>
                                     <th colSpan={2} className="p-1 print:p-2 text-center font-bold border border-slate-400 bg-blue-50 text-blue-900">تعداد</th>
-                                    <th colSpan={2} className="p-1 print:p-2 text-center font-bold border border-slate-400">قیمت (فی)</th>
+                                    <th colSpan={2} className="p-1 print:p-2 text-center font-bold border border-slate-400">قیمت (فی - {invoice.currency})</th>
                                     <th rowSpan={2} className="p-1 print:p-2 text-center font-bold border border-slate-400 w-20 print:w-24">قیمت کل</th>
                                 </tr>
                                 <tr>
@@ -172,34 +142,52 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
                                             <td className="p-1 print:p-2 text-center border border-slate-300 font-mono text-slate-500">{index + 1}</td>
                                             <td className="p-1 print:p-2 text-right border border-slate-300">
                                                 <p className="font-semibold text-slate-800">{item.name}</p>
-                                                {item.type === 'product' && (item as any).finalPrice !== undefined && (item as any).finalPrice < (item as any).salePrice && <span className="text-[10px] text-green-600 block">(با تخفیف)</span>}
                                             </td>
                                             <td className="p-1 print:p-2 text-center border border-slate-300 font-bold bg-blue-50/30">{details.pkgCount > 0 ? details.pkgCount.toLocaleString('fa-IR') : '-'}</td>
                                             <td className="p-1 print:p-2 text-center border border-slate-300 font-bold bg-blue-50/30">{details.unitCount > 0 ? details.unitCount.toLocaleString('fa-IR') : '-'}</td>
-                                            <td className="p-1 print:p-2 text-center border border-slate-300">{details.pkgCount > 0 ? details.pkgPrice.toLocaleString('fa-IR') : '-'}</td>
-                                            <td className="p-1 print:p-2 text-center border border-slate-300">{details.unitCount > 0 ? details.unitPrice.toLocaleString('fa-IR') : '-'}</td>
-                                            <td className="p-1 print:p-2 text-center border border-slate-300 font-bold text-slate-800">{details.totalPrice.toLocaleString('fa-IR')}</td>
+                                            <td className="p-1 print:p-2 text-center border border-slate-300">{details.pkgCount > 0 ? Math.round(details.pkgPrice).toLocaleString('fa-IR') : '-'}</td>
+                                            <td className="p-1 print:p-2 text-center border border-slate-300">{details.unitCount > 0 ? Math.round(details.unitPrice).toLocaleString('fa-IR') : '-'}</td>
+                                            <td className="p-1 print:p-2 text-center border border-slate-300 font-bold text-slate-800">{Math.round(details.totalPrice).toLocaleString('fa-IR')}</td>
                                         </tr>
                                     )
                                 })}
                             </tbody>
                         </table>
                     </div>
-                    <div className="mt-2 pt-2 print:mt-4 text-left space-y-1 text-sm">
-                        {perceivedTotalDiscount > 0 && (
-                            <>
-                                <div className="flex justify-between px-2"><span className="font-semibold text-slate-600">جمع کل:</span><span>{formatCurrency(perceivedSubtotal, storeSettings)}</span></div>
-                                <div className="flex justify-between px-2 text-green-600"><span className="font-semibold">مجموع تخفیف:</span><span>{formatCurrency(perceivedTotalDiscount, storeSettings)}</span></div>
-                            </>
-                        )}
-                        <div className="flex justify-between text-xl font-bold border-t border-black pt-2 mt-2 px-2 bg-slate-100 rounded">
-                            <span>مبلغ نهایی:</span>
-                            <span className="text-blue-700">{formatCurrency(invoice.totalAmount, storeSettings)}</span>
+
+                    <div className="mt-2 pt-2 print:mt-4 flex justify-between items-start">
+                        <div className="w-1/2 space-y-1">
+                             {customer && (
+                                 <div className="p-2 border border-dashed border-slate-400 rounded-lg bg-slate-50/50">
+                                     <p className="text-[10px] font-black text-slate-500 mb-1">وضعیت کل حساب مشتری:</p>
+                                     <div className="grid grid-cols-2 gap-x-4 text-xs font-bold text-slate-700">
+                                         <span>مانده افغانی:</span> <span dir="ltr">{Math.round(customer.balanceAFN).toLocaleString()} AFN</span>
+                                         <span>مانده دلار:</span> <span dir="ltr">{customer.balanceUSD.toLocaleString()} $</span>
+                                         <span>مانده تومان:</span> <span dir="ltr">{customer.balanceIRT.toLocaleString()} T</span>
+                                         <div className="col-span-2 border-t mt-1 pt-1 flex justify-between font-black text-blue-800">
+                                             <span>تراز نهایی (AFN):</span>
+                                             <span dir="ltr">{Math.round(customer.balance).toLocaleString()}</span>
+                                         </div>
+                                     </div>
+                                 </div>
+                             )}
+                        </div>
+                        <div className="w-1/2 text-left space-y-1 text-sm">
+                            {invoice.totalDiscount > 0 && (
+                                <>
+                                    <div className="flex justify-between px-2"><span className="font-semibold text-slate-600">جمع کل:</span><span>{Math.round(invoice.subtotal).toLocaleString('fa-IR')} {currencySuffix}</span></div>
+                                    <div className="flex justify-between px-2 text-green-600"><span className="font-semibold">مجموع تخفیف:</span><span>{Math.round(invoice.totalDiscount).toLocaleString('fa-IR')} {currencySuffix}</span></div>
+                                </>
+                            )}
+                            <div className="flex justify-between text-xl font-bold border-t border-black pt-2 mt-2 px-2 bg-slate-100 rounded">
+                                <span>مبلغ نهایی ({invoice.currency}):</span>
+                                <span className="text-blue-700">{Math.round(invoice.totalAmount).toLocaleString('fa-IR')} {currencySuffix}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div className="flex justify-between items-center mt-4 print:hidden pt-2 border-t no-print">
-                    <button onClick={() => setIsEditingName(true)} className="flex items-center gap-2 px-4 py-3 rounded-lg bg-yellow-100 text-yellow-800 font-semibold"><EditIcon className="w-5 h-5" /><span className="hidden md:inline">نام مشتری</span></button>
+                    <button onClick={() => setIsEditingName(true)} className="flex items-center gap-2 px-4 py-3 rounded-lg bg-yellow-100 text-yellow-800 font-semibold"><EditIcon className="w-5 h-5" /><span className="hidden md:inline">ویرایش نام مشتری</span></button>
                     <div className="flex space-x-3 space-x-reverse">
                         <button onClick={handleClose} className="px-6 py-3 rounded-lg bg-gray-200 font-semibold">بستن</button>
                         <button onClick={handlePrint} className="px-6 py-3 rounded-lg bg-blue-600 text-white shadow-lg btn-primary font-semibold">چاپ نهایی</button>

@@ -1,7 +1,7 @@
-import type { SalesMemoImage, Product, SaleInvoice, PurchaseInvoice, InTransitInvoice, Customer, Supplier, Employee, Expense, Service, StoreSettings, CustomerTransaction, SupplierTransaction, PayrollTransaction, ActivityLog, User, Role } from '../types';
+import type { SalesMemoImage, Product, SaleInvoice, PurchaseInvoice, InTransitInvoice, Customer, Supplier, Employee, Expense, Service, StoreSettings, CustomerTransaction, SupplierTransaction, PayrollTransaction, ActivityLog, User, Role, DepositHolder, DepositTransaction } from '../types';
 
 const DB_NAME = 'KetabestanLocalDB';
-const DB_VERSION = 4; // Increment version for in_transit_invoices store
+const DB_VERSION = 5; // Increment version for security deposit stores
 
 const STORES = {
   SALES_MEMOS: 'salesMemos',
@@ -17,10 +17,12 @@ const STORES = {
   CUSTOMER_TX: 'customer_transactions',
   SUPPLIER_TX: 'supplier_transactions',
   PAYROLL_TX: 'payroll_transactions',
+  DEPOSIT_HOLDERS: 'deposit_holders',
+  DEPOSIT_TRANSACTIONS: 'deposit_transactions',
   ACTIVITY: 'activity_logs',
   SETTINGS: 'store_settings',
-  USERS: 'users', // استور جدید برای کاربران محلی
-  ROLES: 'roles'  // استور جدید برای نقش‌های محلی
+  USERS: 'users',
+  ROLES: 'roles'
 };
 
 let db: IDBDatabase;
@@ -45,9 +47,6 @@ export const openDB = (): Promise<IDBDatabase> => {
           db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: storeName === STORES.SALES_MEMOS });
         }
       });
-      
-      // ایجاد نقش ادمین پیش‌فرض در صورت عدم وجود
-      // این بخش در سرویس انجام خواهد شد
     };
   });
 };

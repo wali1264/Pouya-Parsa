@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { StoreSettings, Supplier, Customer, AnyTransaction } from '../types';
 import { XIcon } from './icons';
@@ -24,6 +23,13 @@ const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ person, trans
     const partyLabel = type === 'supplier' ? 'پرداخت شده به' : 'دریافت شده از';
     const personName = person ? person.name : 'حساب حذف شده';
 
+    // Identify the specific currency of the transaction
+    const transactionCurrency = (transaction as any).currency || 'AFN';
+    const displayCurrencyName = 
+        transactionCurrency === 'USD' ? 'دلار' : 
+        transactionCurrency === 'IRT' ? 'تومان' : 
+        storeSettings.currencyName;
+
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[120] p-4 md:pt-20 overflow-y-auto">
             <div className="bg-white p-6 md:p-10 rounded-2xl shadow-2xl w-full max-w-2xl h-fit overflow-hidden my-auto md:my-0">
@@ -40,8 +46,8 @@ const ReceiptPreviewModal: React.FC<ReceiptPreviewModalProps> = ({ person, trans
                     </div>
                     <div className="space-y-5 text-md border-y border-dashed border-slate-300 py-8 px-5 bg-slate-50/50 rounded-2xl">
                         <p className="font-medium"><strong>{partyLabel}:</strong> محترم <span className="font-black text-xl text-blue-900">{personName}</span></p>
-                        <p className="font-medium"><strong>مبلغ به عدد:</strong> <span className="font-black font-mono text-2xl mx-2 text-emerald-600" dir="ltr">{formatCurrency(transaction.amount, storeSettings)}</span></p>
-                        <p className="font-medium leading-relaxed"><strong>مبلغ به حروف:</strong> <span className="font-bold text-lg text-slate-700">{numberToPersianWords(transaction.amount)} {storeSettings.currencyName}</span></p>
+                        <p className="font-medium"><strong>مبلغ به عدد:</strong> <span className="font-black font-mono text-2xl mx-2 text-emerald-600" dir="ltr">{formatCurrency(transaction.amount, storeSettings, displayCurrencyName)}</span></p>
+                        <p className="font-medium leading-relaxed"><strong>مبلغ به حروف:</strong> <span className="font-bold text-lg text-slate-700">{numberToPersianWords(transaction.amount)} {displayCurrencyName}</span></p>
                          <p className="font-medium italic text-slate-500"><strong>بابت:</strong> {transaction.description}</p>
                     </div>
 

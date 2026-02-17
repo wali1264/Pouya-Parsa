@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../AppContext';
 import type { Supplier, Employee, Customer, Expense, AnyTransaction, CustomerTransaction, SupplierTransaction, PayrollTransaction } from '../types';
 import { PlusIcon, XIcon, EyeIcon, TrashIcon, UserGroupIcon, AccountingIcon } from '../components/icons';
@@ -30,47 +30,47 @@ const SuppliersTab = () => {
     const [receiptModalData, setReceiptModalData] = useState<{ person: Supplier, transaction: SupplierTransaction } | null>(null);
     
     // Add Supplier State
-    const [addSupplierCurrency, setAddSupplierCurrency] = useState<'AFN' | 'USD'>('AFN');
+    const [addSupplierCurrency, setAddSupplierCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
     const [addSupplierRate, setAddSupplierRate] = useState('');
+    const [addSupplierAmount, setAddSupplierAmount] = useState('');
 
     // Payment State
-    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD'>('AFN');
+    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
     const [exchangeRate, setExchangeRate] = useState('');
+    const [paymentAmount, setPaymentAmount] = useState('');
 
     const showToast = (message: string) => { setToast(message); setTimeout(() => setToast(''), 3000); };
 
     const handleAddSupplierForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const initialAmount = Number(formData.get('initialBalance'));
+        const initialAmount = Number(addSupplierAmount);
         const initialType = formData.get('balanceType') as 'creditor' | 'debtor';
         
-        if (addSupplierCurrency === 'USD' && initialAmount > 0 && (!addSupplierRate || Number(addSupplierRate) <= 0)) {
+        if (addSupplierCurrency !== 'AFN' && initialAmount > 0 && (!addSupplierRate || Number(addSupplierRate) <= 0)) {
             showToast("لطفا نرخ ارز را وارد کنید.");
             return;
         }
 
-        // FIX: Added balanceAFN and balanceUSD properties to match Omit<Supplier, "id" | "balance"> type
         addSupplier({
             name: formData.get('name') as string,
             contactPerson: formData.get('contactPerson') as string,
             phone: formData.get('phone') as string,
-            balanceAFN: 0,
-            balanceUSD: 0,
         }, initialAmount > 0 ? { 
             amount: initialAmount, 
             type: initialType, 
             currency: addSupplierCurrency,
-            exchangeRate: addSupplierCurrency === 'USD' ? Number(addSupplierRate) : 1 
+            exchangeRate: addSupplierCurrency === 'AFN' ? 1 : Number(addSupplierRate) 
         } : undefined);
         
         setAddSupplierCurrency('AFN');
         setAddSupplierRate('');
+        setAddSupplierAmount('');
         setIsAddModalOpen(false);
     };
     
     const handleDelete = (supplier: Supplier) => {
-        if (Math.abs(supplier.balanceAFN) > 0 || Math.abs(supplier.balanceUSD) > 0) {
+        if (Math.abs(supplier.balanceAFN) > 0 || Math.abs(supplier.balanceUSD) > 0 || Math.abs(supplier.balanceIRT) > 0) {
             showToast("حذف فقط برای حساب‌های با موجودی صفر امکان‌پذیر است.");
             return;
         }
@@ -83,6 +83,7 @@ const SuppliersTab = () => {
         setSelectedSupplier(supplier);
         setPaymentCurrency('AFN');
         setExchangeRate('');
+        setPaymentAmount('');
         setIsPayModalOpen(true);
     };
 
@@ -91,7 +92,7 @@ const SuppliersTab = () => {
         if (!selectedSupplier) return;
         
         const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const amount = Number(formData.get('amount'));
+        const amount = Number(paymentAmount);
         const description = formData.get('description') as string || 'پرداخت وجه';
 
         if (!amount || amount <= 0) {
@@ -99,7 +100,7 @@ const SuppliersTab = () => {
             return;
         }
         
-        if (paymentCurrency === 'USD' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+        if (paymentCurrency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
             showToast("لطفاً نرخ ارز را وارد کنید.");
             return;
         }
@@ -109,7 +110,7 @@ const SuppliersTab = () => {
             amount, 
             description, 
             paymentCurrency, 
-            paymentCurrency === 'USD' ? Number(exchangeRate) : 1
+            paymentCurrency === 'AFN' ? 1 : Number(exchangeRate)
         );
         
         if (newTransaction) {
@@ -128,10 +129,24 @@ const SuppliersTab = () => {
         const transaction = supplierTransactions.find(t => t.id === transactionId);
         const supplier = suppliers.find(s => s.id === transaction?.supplierId);
         if (transaction && supplier) {
-            setHistoryModalData(null); // Close history modal first
+            setHistoryModalData(null); 
             setReceiptModalData({ person: supplier, transaction });
         }
     };
+
+    const convertedInitialBalance = useMemo(() => {
+        if (!addSupplierAmount || !addSupplierRate || Number(addSupplierRate) <= 0) return 0;
+        return addSupplierCurrency === 'IRT' 
+            ? Number(addSupplierAmount) / Number(addSupplierRate)
+            : Number(addSupplierAmount) * Number(addSupplierRate);
+    }, [addSupplierAmount, addSupplierRate, addSupplierCurrency]);
+
+    const convertedPayment = useMemo(() => {
+        if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0;
+        return paymentCurrency === 'IRT'
+            ? Number(paymentAmount) / Number(exchangeRate)
+            : Number(paymentAmount) * Number(exchangeRate);
+    }, [paymentAmount, exchangeRate, paymentCurrency]);
 
 
     return (
@@ -155,10 +170,11 @@ const SuppliersTab = () => {
                             <tr key={s.id} className="border-t border-gray-200/60 transition-colors hover:bg-blue-50/30">
                                 <td className="p-4 text-lg font-semibold text-slate-800">{s.name}</td>
                                 <td className="p-4 text-lg text-slate-600">{s.phone}</td>
-                                <td className="p-4 text-lg font-black" dir="ltr">
+                                <td className="p-4 text-md font-black" dir="ltr">
                                     <div className="flex flex-col gap-1 items-center">
                                         <span className="text-red-600">{Math.round(s.balanceAFN || 0).toLocaleString()} {storeSettings.currencyName}</span>
-                                        <span className="text-blue-600 text-sm font-bold border-t border-slate-200 pt-1">{(s.balanceUSD || 0).toLocaleString()} $</span>
+                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(s.balanceUSD || 0).toLocaleString()} $</span>
+                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(s.balanceIRT || 0).toLocaleString()} تومان</span>
                                     </div>
                                 </td>
                                 <td className="p-4">
@@ -166,9 +182,9 @@ const SuppliersTab = () => {
                                         <button onClick={() => handleViewHistory(s)} className="p-2.5 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-100 transition-all" title="مشاهده صورت حساب"><EyeIcon className="w-6 h-6"/></button>
                                         <button 
                                             onClick={() => handleDelete(s)} 
-                                            className={`p-2.5 rounded-xl transition-all ${(Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0) ? 'text-red-500 hover:bg-red-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`} 
-                                            title={(Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0) ? "حذف تأمین‌کننده" : "برای حذف باید موجودی تمام ارزها صفر باشد"}
-                                            disabled={Math.abs(s.balanceAFN || 0) > 0 || Math.abs(s.balanceUSD || 0) > 0}
+                                            className={`p-2.5 rounded-xl transition-all ${(Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0 && Math.abs(s.balanceIRT || 0) === 0) ? 'text-red-500 hover:bg-red-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`} 
+                                            title={(Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0 && Math.abs(s.balanceIRT || 0) === 0) ? "حذف تأمین‌کننده" : "برای حذف باید موجودی تمام ارزها صفر باشد"}
+                                            disabled={Math.abs(s.balanceAFN || 0) > 0 || Math.abs(s.balanceUSD || 0) > 0 || Math.abs(s.balanceIRT || 0) > 0}
                                         >
                                             <TrashIcon className="w-6 h-6" />
                                         </button>
@@ -193,17 +209,18 @@ const SuppliersTab = () => {
                                <button onClick={() => handleViewHistory(s)} className="p-2.5 bg-slate-100 rounded-xl text-slate-600 active:bg-blue-100 active:text-blue-600 transition-colors"><EyeIcon className="w-5 h-5" /></button>
                                <button 
                                     onClick={() => handleDelete(s)} 
-                                    className={`p-2.5 bg-slate-100 rounded-xl transition-colors ${(Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0) ? 'text-red-500 active:bg-red-100' : 'text-slate-300'}`}
-                                    disabled={Math.abs(s.balanceAFN || 0) > 0 || Math.abs(s.balanceUSD || 0) > 0}
+                                    className={`p-2.5 bg-slate-100 rounded-xl transition-colors ${(Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0 && Math.abs(s.balanceIRT || 0) === 0) ? 'text-red-500 active:bg-red-100' : 'text-slate-300'}`}
+                                    disabled={Math.abs(s.balanceAFN || 0) > 0 || Math.abs(s.balanceUSD || 0) > 0 || Math.abs(s.balanceIRT || 0) > 0}
                                 ><TrashIcon className="w-5 h-5" /></button>
                            </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-dashed border-slate-200 flex justify-between items-center">
                             <div className="text-right">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">بدهی ما</p>
-                                <div className="flex flex-col items-start">
-                                    <p className="font-black text-red-600 text-lg" dir="ltr">{Math.round(s.balanceAFN || 0).toLocaleString()} {storeSettings.currencyName}</p>
-                                    <p className="font-black text-blue-600 text-sm" dir="ltr">{(s.balanceUSD || 0).toLocaleString()} $</p>
+                                <div className="flex flex-col items-start font-black text-sm" dir="ltr">
+                                    <p className="text-red-600 text-base">{Math.round(s.balanceAFN || 0).toLocaleString()} AFN</p>
+                                    <p className="text-blue-600">{(s.balanceUSD || 0).toLocaleString()} $</p>
+                                    <p className="text-orange-600">{(s.balanceIRT || 0).toLocaleString()} IRT</p>
                                 </div>
                             </div>
                             <button onClick={() => handleOpenPayModal(s)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-emerald-100 active:shadow-none active:translate-y-0.5 transition-all">ثبت پرداخت</button>
@@ -224,35 +241,44 @@ const SuppliersTab = () => {
                             
                             <div className="flex gap-4">
                                 <label className="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" checked={addSupplierCurrency === 'AFN'} onChange={() => setAddSupplierCurrency('AFN')} className="w-4 h-4 text-blue-600" />
+                                    <input type="radio" checked={addSupplierCurrency === 'AFN'} onChange={() => {setAddSupplierCurrency('AFN'); setAddSupplierRate('');}} className="w-4 h-4 text-blue-600" />
                                     <span className="text-sm font-semibold text-slate-700 group-hover:text-blue-600">افغانی</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer group">
                                     <input type="radio" checked={addSupplierCurrency === 'USD'} onChange={() => setAddSupplierCurrency('USD')} className="w-4 h-4 text-green-600" />
                                     <span className="text-sm font-semibold text-slate-700 group-hover:text-green-600">دلار</span>
                                 </label>
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" checked={addSupplierCurrency === 'IRT'} onChange={() => setAddSupplierCurrency('IRT')} className="w-4 h-4 text-orange-600" />
+                                    <span className="text-sm font-semibold text-slate-700 group-hover:text-orange-600">تومان</span>
+                                </label>
                             </div>
 
-                            {addSupplierCurrency === 'USD' && (
+                            {addSupplierCurrency !== 'AFN' && (
                                 <div className="flex items-center gap-3">
-                                    <span className="text-xs whitespace-nowrap font-bold text-slate-500">نرخ تبدیل:</span>
+                                    <span className="text-xs whitespace-nowrap font-bold text-slate-500">نرخ {addSupplierCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
                                     <input 
                                         type="number" 
+                                        step="any"
                                         value={addSupplierRate} 
                                         onChange={e => setAddSupplierRate(e.target.value)} 
-                                        placeholder="مثلاً 68" 
+                                        placeholder="نرخ" 
                                         className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center focus:ring-4 focus:ring-blue-50 outline-none transition-all" 
                                     />
                                 </div>
                             )}
 
                             <div className="flex gap-2">
-                                <input name="initialBalance" type="number" placeholder={`مبلغ (${addSupplierCurrency})`} className="w-2/3 p-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all" />
+                                <input name="initialBalance" type="number" value={addSupplierAmount} onChange={e => setAddSupplierAmount(e.target.value)} placeholder={`مبلغ (${addSupplierCurrency})`} className="w-2/3 p-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all" />
                                 <select name="balanceType" className="w-1/3 p-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold focus:ring-4 focus:ring-blue-50 outline-none transition-all">
                                     <option value="creditor">ما بدهکاریم</option>
                                     <option value="debtor">او بدهکار است</option>
                                 </select>
                             </div>
+                            
+                            {addSupplierCurrency !== 'AFN' && convertedInitialBalance > 0 && (
+                                <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} AFN</p>
+                            )}
                         </div>
 
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all font-black text-lg active:scale-[0.98]">ذخیره نهایی</button>
@@ -264,27 +290,37 @@ const SuppliersTab = () => {
                     <form onSubmit={handleAddPaymentForm} className="space-y-4">
                         <div className="flex gap-4 p-3 bg-blue-50 rounded-xl">
                             <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" checked={paymentCurrency === 'AFN'} onChange={() => setPaymentCurrency('AFN')} className="text-blue-600" />
-                                <span className="text-xs font-bold">افغانی (AFN)</span>
+                                <input type="radio" checked={paymentCurrency === 'AFN'} onChange={() => {setPaymentCurrency('AFN'); setExchangeRate('');}} className="text-blue-600" />
+                                <span className="text-xs font-bold">افغانی</span>
                             </label>
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input type="radio" checked={paymentCurrency === 'USD'} onChange={() => setPaymentCurrency('USD')} className="text-green-600" />
-                                <span className="text-xs font-bold">دلار (USD)</span>
+                                <span className="text-xs font-bold">دلار</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" checked={paymentCurrency === 'IRT'} onChange={() => setPaymentCurrency('IRT')} className="text-orange-600" />
+                                <span className="text-xs font-bold">تومان</span>
                             </label>
                         </div>
-                        {paymentCurrency === 'USD' && (
+                        {paymentCurrency !== 'AFN' && (
                              <div className="flex items-center gap-3">
-                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ تبدیل:</span>
+                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ {paymentCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
                                 <input 
                                     type="number" 
+                                    step="any"
                                     value={exchangeRate} 
                                     onChange={e => setExchangeRate(e.target.value)} 
-                                    placeholder="مثلاً 68" 
+                                    placeholder="نرخ" 
                                     className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" 
                                 />
                             </div>
                         )}
-                        <input name="amount" type="number" placeholder={`مبلغ پرداخت (${paymentCurrency === 'USD' ? '$' : storeSettings.currencyName})`} className="w-full p-4 border border-slate-200 rounded-xl focus:ring-4 focus:ring-emerald-50 outline-none font-bold" required />
+                        <input name="amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder={`مبلغ پرداخت (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl focus:ring-4 focus:ring-emerald-50 outline-none font-bold" required />
+                        
+                        {paymentCurrency !== 'AFN' && convertedPayment > 0 && (
+                            <p className="text-[10px] font-black text-emerald-600 text-left">معادل از حساب کل: {Math.round(convertedPayment).toLocaleString()} AFN</p>
+                        )}
+                        
                         <input name="description" placeholder="بابت... (مثلاً فاکتور فلان)" className="w-full p-4 border border-slate-200 rounded-xl focus:ring-4 focus:ring-emerald-50 outline-none" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl shadow-emerald-100 font-black text-lg active:scale-[0.98]">ثبت و چاپ رسید</button>
                     </form>
@@ -474,18 +510,24 @@ const CustomersTab = () => {
     const [receiptModalData, setReceiptModalData] = useState<{ person: Customer, transaction: CustomerTransaction } | null>(null);
 
     // Add Customer State
-    const [addCustomerCurrency, setAddCustomerCurrency] = useState<'AFN' | 'USD'>('AFN');
+    const [addCustomerCurrency, setAddCustomerCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
     const [addCustomerRate, setAddCustomerRate] = useState('');
+    const [addCustomerAmount, setAddCustomerAmount] = useState('');
+
+    // Payment State
+    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [exchangeRate, setExchangeRate] = useState('');
+    const [paymentAmount, setPaymentAmount] = useState('');
 
     const showToast = (message: string) => { setToast(message); setTimeout(() => setToast(''), 3000); };
 
     const handleAddCustomerForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const initialAmount = Number(formData.get('initialBalance'));
+        const initialAmount = Number(addCustomerAmount);
         const initialType = formData.get('balanceType') as 'creditor' | 'debtor';
 
-        if (addCustomerCurrency === 'USD' && initialAmount > 0 && (!addCustomerRate || Number(addCustomerRate) <= 0)) {
+        if (addCustomerCurrency !== 'AFN' && initialAmount > 0 && (!addCustomerRate || Number(addCustomerRate) <= 0)) {
             showToast("لطفا نرخ ارز را وارد کنید.");
             return;
         }
@@ -497,16 +539,17 @@ const CustomersTab = () => {
             amount: initialAmount, 
             type: initialType,
             currency: addCustomerCurrency,
-            exchangeRate: addCustomerCurrency === 'USD' ? Number(addCustomerRate) : 1
+            exchangeRate: addCustomerCurrency === 'AFN' ? 1 : Number(addCustomerRate)
         } : undefined);
         
         setAddCustomerCurrency('AFN');
         setAddCustomerRate('');
+        setAddCustomerAmount('');
         setIsAddModalOpen(false);
     };
 
     const handleDelete = (customer: Customer) => {
-        if (Math.abs(customer.balance) > 0) {
+        if (Math.abs(customer.balanceAFN) > 0 || Math.abs(customer.balanceUSD) > 0 || Math.abs(customer.balanceIRT) > 0) {
             showToast("حذف فقط برای حساب‌های با موجودی صفر امکان‌پذیر است.");
             return;
         }
@@ -517,6 +560,9 @@ const CustomersTab = () => {
 
     const handleOpenPayModal = (customer: Customer) => {
         setSelectedCustomer(customer);
+        setPaymentCurrency('AFN');
+        setExchangeRate('');
+        setPaymentAmount('');
         setIsPayModalOpen(true);
     };
 
@@ -524,15 +570,28 @@ const CustomersTab = () => {
         e.preventDefault();
         if (!selectedCustomer) return;
         
+        const amount = Number(paymentAmount);
         const formData = new FormData(e.currentTarget);
-        const amount = Number(formData.get('amount'));
         const description = formData.get('description') as string || 'دریافت نقدی';
         
         if (!amount || amount <= 0) {
             showToast("مبلغ باید بزرگتر از صفر باشد.");
             return;
         }
-        const newTransaction = addCustomerPayment(selectedCustomer.id, amount, description);
+
+        if (paymentCurrency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+            showToast("لطفاً نرخ ارز را وارد کنید.");
+            return;
+        }
+
+        const newTransaction = addCustomerPayment(
+            selectedCustomer.id, 
+            amount, 
+            description, 
+            paymentCurrency, 
+            paymentCurrency === 'AFN' ? 1 : Number(exchangeRate)
+        );
+        
         if (newTransaction) {
             setIsPayModalOpen(false);
             setReceiptModalData({ person: selectedCustomer, transaction: newTransaction });
@@ -553,6 +612,21 @@ const CustomersTab = () => {
             setReceiptModalData({ person: customer, transaction });
         }
     };
+
+    const convertedInitialBalance = useMemo(() => {
+        if (!addCustomerAmount || !addCustomerRate || Number(addCustomerRate) <= 0) return 0;
+        return addCustomerCurrency === 'IRT' 
+            ? Number(addCustomerAmount) / Number(addCustomerRate)
+            : Number(addCustomerAmount) * Number(addCustomerRate);
+    }, [addCustomerAmount, addCustomerRate, addCustomerCurrency]);
+
+    const convertedPayment = useMemo(() => {
+        if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0;
+        return paymentCurrency === 'IRT'
+            ? Number(paymentAmount) / Number(exchangeRate)
+            : Number(paymentAmount) * Number(exchangeRate);
+    }, [paymentAmount, exchangeRate, paymentCurrency]);
+
 
     return (
         <div>
@@ -575,15 +649,21 @@ const CustomersTab = () => {
                             <tr key={c.id} className="border-t border-gray-200 hover:bg-blue-50/30 transition-colors">
                                 <td className="p-4 text-lg font-bold text-slate-800">{c.name}</td>
                                 <td className="p-4 text-md text-slate-600">{c.phone}</td>
-                                <td className="p-4 text-lg font-black text-emerald-600">{formatCurrency(c.balance, storeSettings)}</td>
+                                <td className="p-4 text-md font-black" dir="ltr">
+                                    <div className="flex flex-col gap-1 items-center">
+                                        <span className="text-emerald-600">{Math.round(c.balanceAFN || 0).toLocaleString()} {storeSettings.currencyName}</span>
+                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(c.balanceUSD || 0).toLocaleString()} $</span>
+                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(c.balanceIRT || 0).toLocaleString()} تومان</span>
+                                    </div>
+                                </td>
                                 <td className="p-4">
                                      <div className="flex justify-center items-center gap-2">
                                         <button onClick={() => handleViewHistory(c)} className="p-2.5 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-100 transition-all" title="مشاهده صورت حساب"><EyeIcon className="w-6 h-6"/></button>
                                         <button 
                                             onClick={() => handleDelete(c)} 
-                                            className={`p-2.5 rounded-xl transition-all ${Math.abs(c.balance) === 0 ? 'text-red-500 hover:bg-red-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`} 
-                                            title={Math.abs(c.balance) === 0 ? "حذف مشتری" : "برای حذف باید موجودی صفر باشد"}
-                                            disabled={Math.abs(c.balance) > 0}
+                                            className={`p-2.5 rounded-xl transition-all ${(Math.abs(c.balanceAFN || 0) === 0 && Math.abs(c.balanceUSD || 0) === 0 && Math.abs(c.balanceIRT || 0) === 0) ? 'text-red-500 hover:bg-red-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`} 
+                                            title={(Math.abs(c.balanceAFN || 0) === 0 && Math.abs(c.balanceUSD || 0) === 0 && Math.abs(c.balanceIRT || 0) === 0) ? "حذف مشتری" : "برای حذف باید موجودی صفر باشد"}
+                                            disabled={Math.abs(c.balanceAFN || 0) > 0 || Math.abs(c.balanceUSD || 0) > 0 || Math.abs(c.balanceIRT || 0) > 0}
                                         >
                                             <TrashIcon className="w-6 h-6" />
                                         </button>
@@ -609,15 +689,19 @@ const CustomersTab = () => {
                                <button onClick={() => handleViewHistory(c)} className="p-2.5 bg-slate-100 rounded-xl text-slate-600 active:bg-blue-100"><EyeIcon className="w-5 h-5" /></button>
                                <button 
                                     onClick={() => handleDelete(c)} 
-                                    className={`p-2.5 bg-slate-100 rounded-xl transition-colors ${Math.abs(c.balance) === 0 ? 'text-red-500' : 'text-slate-300'}`}
-                                    disabled={Math.abs(c.balance) > 0}
+                                    className={`p-2.5 bg-slate-100 rounded-xl transition-colors ${(Math.abs(c.balanceAFN || 0) === 0 && Math.abs(c.balanceUSD || 0) === 0 && Math.abs(c.balanceIRT || 0) === 0) ? 'text-red-500' : 'text-slate-300'}`}
+                                    disabled={Math.abs(c.balanceAFN || 0) > 0 || Math.abs(c.balanceUSD || 0) > 0 || Math.abs(c.balanceIRT || 0) > 0}
                                 ><TrashIcon className="w-5 h-5" /></button>
                            </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-dashed border-slate-200 flex justify-between items-center">
                             <div className="text-right">
                                 <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">طلب ما</p>
-                                <p className="font-black text-emerald-600 text-lg" dir="ltr">{formatCurrency(c.balance, storeSettings)}</p>
+                                <div className="flex flex-col items-start font-black text-sm" dir="ltr">
+                                    <p className="text-emerald-600 text-base">{Math.round(c.balanceAFN || 0).toLocaleString()} AFN</p>
+                                    <p className="text-blue-600">{(c.balanceUSD || 0).toLocaleString()} $</p>
+                                    <p className="text-orange-600">{(c.balanceIRT || 0).toLocaleString()} IRT</p>
+                                </div>
                             </div>
                             <button onClick={() => handleOpenPayModal(c)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-emerald-100 active:shadow-none transition-all">ثبت دریافت</button>
                         </div>
@@ -636,35 +720,44 @@ const CustomersTab = () => {
                             
                             <div className="flex gap-4">
                                 <label className="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" checked={addCustomerCurrency === 'AFN'} onChange={() => setAddCustomerCurrency('AFN')} className="text-blue-600" />
+                                    <input type="radio" checked={addCustomerCurrency === 'AFN'} onChange={() => {setAddCustomerCurrency('AFN'); setAddCustomerRate('');}} className="text-blue-600" />
                                     <span className="text-sm font-bold text-slate-700">افغانی</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer group">
                                     <input type="radio" checked={addCustomerCurrency === 'USD'} onChange={() => setAddCustomerCurrency('USD')} className="text-green-600" />
                                     <span className="text-sm font-bold text-slate-700">دلار</span>
                                 </label>
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" checked={addCustomerCurrency === 'IRT'} onChange={() => setAddCustomerCurrency('IRT')} className="text-orange-600" />
+                                    <span className="text-sm font-bold text-slate-700">تومان</span>
+                                </label>
                             </div>
 
-                            {addCustomerCurrency === 'USD' && (
+                            {addCustomerCurrency !== 'AFN' && (
                                 <div className="flex items-center gap-3">
-                                    <span className="text-xs font-bold text-slate-400">نرخ تبدیل:</span>
+                                    <span className="text-xs font-bold text-slate-400">نرخ {addCustomerCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
                                     <input 
                                         type="number" 
+                                        step="any"
                                         value={addCustomerRate} 
                                         onChange={e => setAddCustomerRate(e.target.value)} 
-                                        placeholder="68" 
+                                        placeholder="نرخ" 
                                         className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" 
                                     />
                                 </div>
                             )}
 
                             <div className="flex gap-2">
-                                <input name="initialBalance" type="number" placeholder={`مبلغ (${addCustomerCurrency})`} className="w-2/3 p-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 font-bold" />
+                                <input name="initialBalance" type="number" value={addCustomerAmount} onChange={e => setAddCustomerAmount(e.target.value)} placeholder={`مبلغ (${addCustomerCurrency})`} className="w-2/3 p-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 font-bold" />
                                 <select name="balanceType" className="w-1/3 p-2.5 border border-slate-200 rounded-xl bg-white text-xs font-black">
                                     <option value="debtor">بدهکار است</option>
                                     <option value="creditor">بستانکار است</option>
                                 </select>
                             </div>
+
+                            {addCustomerCurrency !== 'AFN' && convertedInitialBalance > 0 && (
+                                <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} AFN</p>
+                            )}
                         </div>
 
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg">ذخیره مشتری</button>
@@ -672,10 +765,42 @@ const CustomersTab = () => {
                 </Modal>
             )}
              {isPayModalOpen && selectedCustomer && (
-                 <Modal title={`دریافت نقد از: ${selectedCustomer.name}`} onClose={() => setIsPayModalOpen(false)}>
+                 <Modal title={`دریافت وجه از: ${selectedCustomer.name}`} onClose={() => setIsPayModalOpen(false)}>
                     <form onSubmit={handleAddPaymentForm} className="space-y-4">
-                        <input name="amount" type="number" placeholder={`مبلغ دریافتی (${storeSettings.currencyName})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-emerald-50 font-black text-xl text-center" required />
-                         <input name="description" placeholder="بابت... (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
+                        <div className="flex gap-4 p-3 bg-blue-50 rounded-xl">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" checked={paymentCurrency === 'AFN'} onChange={() => {setPaymentCurrency('AFN'); setExchangeRate('');}} className="text-blue-600" />
+                                <span className="text-xs font-bold">افغانی</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" checked={paymentCurrency === 'USD'} onChange={() => setPaymentCurrency('USD')} className="text-green-600" />
+                                <span className="text-xs font-bold">دلار</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" checked={paymentCurrency === 'IRT'} onChange={() => setPaymentCurrency('IRT')} className="text-orange-600" />
+                                <span className="text-xs font-bold">تومان</span>
+                            </label>
+                        </div>
+                        {paymentCurrency !== 'AFN' && (
+                             <div className="flex items-center gap-3">
+                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ {paymentCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
+                                <input 
+                                    type="number" 
+                                    step="any"
+                                    value={exchangeRate} 
+                                    onChange={e => setExchangeRate(e.target.value)} 
+                                    placeholder="نرخ" 
+                                    className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" 
+                                />
+                            </div>
+                        )}
+                        <input name="amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder={`مبلغ دریافتی (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-emerald-50 font-black text-xl text-center" required />
+                        
+                        {paymentCurrency !== 'AFN' && convertedPayment > 0 && (
+                            <p className="text-[10px] font-black text-emerald-600 text-left">معادل دریافتی: {Math.round(convertedPayment).toLocaleString()} AFN</p>
+                        )}
+                        
+                        <input name="description" placeholder="بابت... (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl shadow-emerald-100 font-black text-lg active:scale-[0.98]">ثبت نهایی و چاپ رسید</button>
                     </form>
                 </Modal>

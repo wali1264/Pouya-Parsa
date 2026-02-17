@@ -42,12 +42,15 @@ export interface SaleInvoice {
   type: 'sale' | 'return';
   originalInvoiceId?: string; // Present if type is 'return'
   items: CartItem[];
-  subtotal: number; // Total before discount
-  totalDiscount: number; // Total discount amount
-  totalAmount: number; // Final amount (subtotal - totalDiscount)
+  subtotal: number; // Total before discount (in transaction currency)
+  totalDiscount: number; // Total discount amount (in transaction currency)
+  totalAmount: number; // Final amount (subtotal - totalDiscount) (in transaction currency)
+  totalAmountAFN: number; // NEW: Equivalent in AFN for inventory and reports
   timestamp: string;
   cashier: string;
   customerId?: string; // Optional: for credit sales
+  currency: 'AFN' | 'USD' | 'IRT'; // Multi-currency support
+  exchangeRate: number;            // Rate to base currency (AFN)
 }
 
 export interface PurchaseInvoiceItem {
@@ -57,6 +60,10 @@ export interface PurchaseInvoiceItem {
     purchasePrice: number;
     lotNumber: string;
     expiryDate?: string;
+    // Phase 1: Lifecycle Tracking
+    atFactoryQty: number;
+    inTransitQty: number;
+    receivedQty: number;
 }
 
 export interface PurchaseInvoice {
@@ -68,23 +75,46 @@ export interface PurchaseInvoice {
   items: PurchaseInvoiceItem[];
   totalAmount: number;
   timestamp: string;
-  currency?: 'AFN' | 'USD'; // New field
-  exchangeRate?: number;    // New field
+  currency?: 'AFN' | 'USD' | 'IRT'; // Added IRT
+  exchangeRate?: number;    
+  sourceInTransitId?: string; // Phase 2: Link to parent shipment
 }
 
 export interface InTransitInvoice extends Omit<PurchaseInvoice, 'type'> {
     type: 'in_transit';
     expectedArrivalDate?: string;
+    paidAmount?: number; // Phase 2: Track prepayments specifically for this order
 }
 
 export interface ActivityLog {
   id: string;
-  type: 'sale' | 'purchase' | 'inventory' | 'login' | 'payroll';
+  type: 'sale' | 'purchase' | 'inventory' | 'login' | 'payroll' | 'deposit';
   description: string;
   timestamp: string;
   user: string;
   refId?: string; // ID of the related entity (invoice, product, etc.)
-  refType?: 'saleInvoice' | 'purchaseInvoice' | 'product'; // To know what to look for
+  refType?: 'saleInvoice' | 'purchaseInvoice' | 'product' | 'depositHolder'; // To know what to look for
+}
+
+// --- Security Deposit Module Types ---
+export interface DepositHolder {
+    id: string;
+    name: string;
+    phone?: string;
+    balanceAFN: number;
+    balanceUSD: number;
+    balanceIRT: number;
+    createdAt: string;
+}
+
+export interface DepositTransaction {
+    id: string;
+    holderId: string;
+    type: 'deposit' | 'withdrawal';
+    amount: number;
+    currency: 'AFN' | 'USD' | 'IRT';
+    description: string;
+    date: string;
 }
 
 // --- Accounting Module Types ---
@@ -98,6 +128,7 @@ export interface Supplier {
     balance: number; // Total approximate balance in AFN (for reports)
     balanceAFN: number; // Precise AFN balance
     balanceUSD: number; // Precise USD balance
+    balanceIRT: number; // Precise IRT balance (New)
 }
 
 export interface SupplierTransaction {
@@ -108,7 +139,7 @@ export interface SupplierTransaction {
     date: string;
     description: string; // e.g., Invoice # or Payment to X
     invoiceId?: string; // Link to the purchase invoice
-    currency?: 'AFN' | 'USD'; // Track specific currency for this transaction
+    currency?: 'AFN' | 'USD' | 'IRT'; // Track specific currency
 }
 
 
@@ -134,7 +165,10 @@ export interface Customer {
     name: string;
     phone?: string;
     creditLimit?: number;
-    balance: number; // Positive means they owe us
+    balance: number;    // Positive means they owe us (Total in AFN)
+    balanceAFN: number; // Positive means they owe us AFN
+    balanceUSD: number; // Positive means they owe us USD
+    balanceIRT: number; // Positive means they owe us IRT
 }
 
 export interface CustomerTransaction {
@@ -145,9 +179,10 @@ export interface CustomerTransaction {
     date: string;
     description: string; // e.g., Invoice # or Payment received
     invoiceId?: string; // Link to the sale invoice
+    currency?: 'AFN' | 'USD' | 'IRT'; // Added currency tracking
 }
 
-export type AnyTransaction = CustomerTransaction | SupplierTransaction | PayrollTransaction;
+export type AnyTransaction = CustomerTransaction | SupplierTransaction | PayrollTransaction | DepositTransaction;
 
 export interface Expense {
     id: string;
@@ -205,6 +240,8 @@ export interface AppState {
     employees: Employee[];
     expenses: Expense[];
     services: Service[];
+    depositHolders: DepositHolder[];
+    depositTransactions: DepositTransaction[];
     storeSettings: StoreSettings;
     cart: CartItem[];
     customerTransactions: CustomerTransaction[];

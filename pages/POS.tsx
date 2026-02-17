@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { InvoiceItem, Product, SaleInvoice, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent, Customer, SalesMemoImage, Service, CartItem } from '../types';
 import { useAppContext } from '../AppContext';
-import { MicIcon, EditIcon, PrintIcon, TrashIcon, CameraIcon, GalleryIcon, XIcon, CheckIcon, BarcodeIcon, PlusIcon, UserGroupIcon, ChevronDownIcon } from '../components/icons';
+import { MicIcon, EditIcon, PrintIcon, TrashIcon, CameraIcon, GalleryIcon, XIcon, CheckIcon, BarcodeIcon, PlusIcon, UserGroupIcon, ChevronDownIcon, WarningIcon } from '../components/icons';
 import Toast from '../components/Toast';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import FloatingGallery from '../components/FloatingGallery';
@@ -42,14 +41,25 @@ const ProductSide: React.FC<{
     removeFromCart: (itemId: string, itemType: 'product' | 'service') => void,
     updateCartItemFinalPrice: (itemId: string, itemType: 'product' | 'service', finalPrice: number) => void,
     hasPermission: (permission: string) => boolean,
+    currency: 'AFN' | 'USD' | 'IRT',
+    exchangeRate: string,
+    onMobileCheckout: () => void
 }> = ({
     searchContainerRef, memoFileInputRef, searchInputRef, searchTerm, setSearchTerm,
     setIsSearchFocused, handleTakePhotoClick, handlePhotoTaken, isBarcodeModeActive,
     setIsBarcodeModeActive, isListening, toggleListening, recognitionLang, toggleLanguage,
     isSearchFocused, dropdownProducts, handleDropdownItemClick,
     addToCart, storeSettings, cart, editingPriceItemId, setEditingPriceItemId,
-    updateCartItemQuantity, removeFromCart, updateCartItemFinalPrice, hasPermission
-}) => (
+    updateCartItemQuantity, removeFromCart, updateCartItemFinalPrice, hasPermission,
+    currency, exchangeRate, onMobileCheckout
+}) => {
+    
+    const cartTotalAFN = cart.reduce((total, item) => {
+        const price = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
+        return total + (price * item.quantity);
+    }, 0);
+
+    return (
     <>
         <div ref={searchContainerRef} className="relative mb-4 flex-shrink-0">
              <input
@@ -126,6 +136,8 @@ const ProductSide: React.FC<{
                                setEditingPriceItemId(null);
                            }}
                            onCancelPriceEdit={() => setEditingPriceItemId(null)}
+                           currency={currency}
+                           exchangeRate={exchangeRate}
                        />
                     ))}
                  </div>
@@ -135,8 +147,34 @@ const ProductSide: React.FC<{
                 </div>
              )}
         </div>
+
+        {/* Mobile Sticky Total Bar (Visible in Product View when Cart not empty) */}
+        {cart.length > 0 && (
+            <div className="md:hidden fixed bottom-[50px] left-0 right-0 z-[90] bg-gradient-to-r from-blue-700 to-indigo-800 p-3 shadow-2xl flex justify-between items-center animate-slide-up-mobile">
+                <div className="flex items-center gap-3">
+                    <div className="bg-white/20 p-2 rounded-lg">
+                         <div className="relative">
+                            <PlusIcon className="w-5 h-5 text-white" />
+                            <span className="absolute -top-1 -right-1 bg-white text-blue-800 text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">{cart.length}</span>
+                         </div>
+                    </div>
+                    <div>
+                        <p className="text-[10px] text-blue-100 font-bold">مجموع فعلی سبد:</p>
+                        <p className="text-white font-black">{Math.round(cartTotalAFN).toLocaleString()} AFN</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={onMobileCheckout}
+                    className="bg-white text-blue-700 px-4 py-2 rounded-xl font-black text-sm flex items-center gap-2 active:scale-95 transition-transform shadow-md"
+                >
+                    <CheckIcon className="w-4 h-4" />
+                    تکمیل و ثبت
+                </button>
+            </div>
+        )}
     </>
-);
+    );
+};
 
 // Extracted CartSide Component
 const CartSide: React.FC<any> = ({
@@ -145,9 +183,16 @@ const CartSide: React.FC<any> = ({
     setEditingPriceItemId, updateCartItemFinalPrice, hasPermission, selectedCustomerId,
     setSelectedCustomerId, customers, totalAmount, completeSale, setInvoiceDateRange,
     handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
-    isProcessing 
+    isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
 }) => {
     
+    const rateNum = Number(exchangeRate) || 1;
+    const convertedTotal = currency === 'AFN' ? totalAmount : 
+                          (currency === 'IRT' ? Math.round(totalAmount * rateNum) : totalAmount / rateNum);
+
+    const selectedCustomer = customers.find((c: Customer) => c.id === selectedCustomerId);
+    const isOverLimit = selectedCustomer && selectedCustomer.balance > (selectedCustomer.creditLimit || Infinity);
+
     return (
      <>
         <div className="flex justify-between items-center mb-2 md:mb-4">
@@ -209,6 +254,8 @@ const CartSide: React.FC<any> = ({
                                setEditingPriceItemId(null);
                            }}
                            onCancelPriceEdit={() => setEditingPriceItemId(null)}
+                           currency={currency}
+                           exchangeRate={exchangeRate}
                        />
                     ))
                 )}
@@ -216,18 +263,59 @@ const CartSide: React.FC<any> = ({
             
             {/* Standard Footer for Desktop */}
             <div className="hidden md:block mt-auto pt-4 border-t-2 border-gray-200/60">
+                 {/* Multi-Currency Selection Bar */}
+                <div className="flex items-center justify-between mb-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <div className="flex gap-2">
+                        <button onClick={() => setCurrency('AFN')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === 'AFN' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>AFN</button>
+                        <button onClick={() => setCurrency('USD')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === 'USD' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>USD</button>
+                        <button onClick={() => setCurrency('IRT')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === 'IRT' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>IRT</button>
+                    </div>
+                    {currency !== 'AFN' && (
+                        <div className="flex items-center gap-2">
+                             <span className="text-[10px] font-black text-slate-400">نرخ تبدیل:</span>
+                             <input 
+                                type="number" 
+                                value={exchangeRate} 
+                                onChange={e => setExchangeRate(e.target.value)} 
+                                className="w-20 p-1.5 border border-slate-300 rounded-lg text-center font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none" 
+                                placeholder="نرخ"
+                             />
+                        </div>
+                    )}
+                </div>
+
                 <div className="mb-4">
-                    <label htmlFor="customer-select" className="text-md font-semibold text-slate-700">مشتری (برای فروش نسیه)</label>
-                    <select id="customer-select" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} className="w-full p-3 mt-2 bg-white/80 border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 form-input" disabled={!hasPermission('pos:create_credit_sale')}>
+                    <div className="flex justify-between items-center mb-2">
+                        <label htmlFor="customer-select" className="text-md font-semibold text-slate-700">مشتری (برای فروش نسیه)</label>
+                        {selectedCustomer && (
+                            <span className={`text-xs font-bold ${isOverLimit ? 'text-orange-600 animate-pulse' : 'text-slate-400'}`}>
+                                {isOverLimit ? '⚠️ سقف اعتبار رد شده' : `تراز: ${Math.round(selectedCustomer.balance).toLocaleString()} AFN`}
+                            </span>
+                        )}
+                    </div>
+                    <select id="customer-select" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} className={`w-full p-3 bg-white/80 border-2 rounded-lg focus:ring-blue-500 focus:border-blue-500 form-input font-bold ${isOverLimit ? 'border-orange-500 text-orange-700 bg-orange-50' : 'border-gray-300'}`} disabled={!hasPermission('pos:create_credit_sale')}>
                         <option value="">فروش نقدی</option>
-                        {customers.map((c: Customer) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        {customers.map((c: Customer) => (
+                            <option key={c.id} value={c.id} className={c.balance > (c.creditLimit || Infinity) ? 'text-orange-600' : ''}>
+                                {c.name} {c.balance > 0 ? `(${Math.round(c.balance).toLocaleString()})` : ''}
+                            </option>
+                        ))}
                     </select>
                 </div>
                 
                 <div className="flex items-center justify-between gap-3">
                      <div className="flex items-center gap-2">
                         <span className="text-lg font-bold text-slate-500">مبلغ کل:</span>
-                        <span className="text-2xl font-extrabold text-blue-700">{formatCurrency(totalAmount, storeSettings)}</span>
+                        <div className="flex flex-col items-end">
+                            <span className="text-2xl font-extrabold text-blue-700">
+                                {convertedTotal.toLocaleString()} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyName)}
+                            </span>
+                            {currency !== 'AFN' && (
+                                <span className="text-[10px] font-bold text-slate-400">
+                                    معادل: {totalAmount.toLocaleString()} AFN
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <button 
                         onClick={completeSale} 
@@ -258,9 +346,10 @@ const CartSide: React.FC<any> = ({
                                     <div className="flex items-center gap-2">
                                         <p className="font-mono font-bold text-slate-800 text-sm md:text-lg">{invoice.id.slice(0,8)}..</p>
                                         {invoice.type === 'return' && <span className="text-[10px] font-bold bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">مرجوعی</span>}
+                                        {invoice.currency !== 'AFN' && <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full uppercase">{invoice.currency}</span>}
                                     </div>
                                     <div className="text-sm md:text-md text-blue-600 font-bold">
-                                        {formatCurrency(invoice.totalAmount, storeSettings)}
+                                        {invoice.totalAmount.toLocaleString()} {invoice.currency === 'USD' ? '$' : (invoice.currency === 'IRT' ? 'ت' : 'افغانی')}
                                     </div>
                                     <p className="text-xs text-slate-400">{new Date(invoice.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</p>
                                 </div>
@@ -397,6 +486,9 @@ const POS: React.FC = () => {
     const [isMobileCustomerMenuOpen, setIsMobileCustomerMenuOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
+    // Multi-currency POS State
+    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [exchangeRate, setExchangeRate] = useState<string>('');
 
     useEffect(() => { loadMemoImages(); }, []);
     
@@ -492,7 +584,7 @@ const POS: React.FC = () => {
 
             recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
                 console.error('Speech recognition error:', event.error);
-                if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                if (event.error !== 'not-allowed' && event.error !== 'aborted') {
                     showToast(`خطای گفتار: ${event.error}`);
                 }
                 setIsListening(false);
@@ -555,31 +647,39 @@ const POS: React.FC = () => {
             .slice(0, 7);
     }, [products, searchTerm]);
 
-    const totalAmount = cart.reduce((total, item) => {
+    // Total amount in AFN for the whole cart
+    const totalAmountAFN = cart.reduce((total, item) => {
         const price = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
         return total + price * item.quantity;
     }, 0);
 
     const completeSale = async () => {
         if (isProcessing) return; 
-        if (!currentUser) {
-            showToast("خطا: کاربر فعلی مشخص نیست.");
+        if (!currentUser) { showToast("خطا: کاربر فعلی مشخص نیست."); return; }
+        
+        if (currency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+            showToast("لطفاً نرخ تبدیل ارز را وارد کنید.");
             return;
         }
-        
+
         setIsProcessing(true);
         try {
-            const result = await context.completeSale(currentUser.username, selectedCustomerId || undefined);
+            const result = await context.completeSale(
+                currentUser.username, 
+                selectedCustomerId || undefined, 
+                currency, 
+                currency === 'AFN' ? 1 : Number(exchangeRate)
+            );
+            
             showToast(result.message);
 
             if (result.success && result.invoice) {
-                if (!context.editingSaleInvoiceId) {
-                    setInvoiceToPrint(result.invoice);
-                }
-                // FIXED: Do not switch to 'invoices' tab. Stay on 'cart' to be ready for next.
+                if (!context.editingSaleInvoiceId) { setInvoiceToPrint(result.invoice); }
                 setSelectedCustomerId('');
-                setMobileView('products'); // Return to scanning view on mobile
+                setMobileView('products');
                 setActiveTab('cart');
+                setCurrency('AFN');
+                setExchangeRate('');
             }
         } catch (e) {
             console.error(e);
@@ -590,10 +690,15 @@ const POS: React.FC = () => {
     }
 
     const handleEditInvoice = (invoiceId: string) => {
+        const inv = saleInvoices.find(i => i.id === invoiceId);
         const result = context.beginEditSale(invoiceId);
         showToast(result.message);
         if (result.success) {
             setSelectedCustomerId(result.customerId || '');
+            if(inv) {
+                setCurrency(inv.currency);
+                setExchangeRate(inv.exchangeRate === 1 ? '' : String(inv.exchangeRate));
+            }
             setActiveTab('cart');
             setMobileView('cart');
         }
@@ -690,7 +795,9 @@ const POS: React.FC = () => {
                         // MiniCart props
                         cart, editingPriceItemId, setEditingPriceItemId, 
                         updateCartItemQuantity: contextUpdateQuantity, removeFromCart: contextRemoveFromCart, 
-                        updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission
+                        updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission,
+                        currency, exchangeRate,
+                        onMobileCheckout: () => setMobileView('cart')
                       }}
                     />
                 </div>
@@ -703,9 +810,9 @@ const POS: React.FC = () => {
                          editingSaleInvoiceId: context.editingSaleInvoiceId, handleCancelEdit: context.cancelEditSale, updateQuantity: contextUpdateQuantity, 
                          removeFromCart: contextRemoveFromCart, editingPriceItemId,
                          setEditingPriceItemId, updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission, 
-                         selectedCustomerId, setSelectedCustomerId, customers, totalAmount, completeSale, setInvoiceDateRange,
+                         selectedCustomerId, setSelectedCustomerId, customers, totalAmount: totalAmountAFN, completeSale, setInvoiceDateRange,
                          handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
-                         isProcessing
+                         isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
                        }}
                     />
                 </div>
@@ -713,20 +820,48 @@ const POS: React.FC = () => {
             
              {/* Unified Mobile Fixed Footer */}
             <div className="md:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white shadow-[0_-5px_15px_rgba(0,0,0,0.1)] flex flex-col">
+                 {/* Layer 0: Currency Toggle on Mobile */}
+                 {mobileView === 'cart' && activeTab === 'cart' && (
+                     <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100/80 border-b">
+                        <div className="flex gap-1.5">
+                            {['AFN', 'USD', 'IRT'].map(c => (
+                                <button key={c} onClick={() => setCurrency(c as any)} className={`px-3 py-1 rounded-lg text-[10px] font-black ${currency === c ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-500 border'}`}>{c}</button>
+                            ))}
+                        </div>
+                        {currency !== 'AFN' && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-slate-400">نرخ:</span>
+                                <input 
+                                    type="number" 
+                                    value={exchangeRate} 
+                                    onChange={e => setExchangeRate(e.target.value)} 
+                                    className="w-16 p-1 border rounded font-mono text-[10px] text-center" 
+                                    placeholder="نرخ"
+                                />
+                            </div>
+                        )}
+                     </div>
+                 )}
+
                  {/* Layer 1: Checkout Bar */}
                  {mobileView === 'cart' && activeTab === 'cart' && (
                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-blue-50/50 h-16">
                         <div className="flex flex-col justify-center w-2/5">
-                            <span className="text-[10px] text-slate-500 font-bold">مبلغ کل</span>
-                            <span className="text-lg font-extrabold text-blue-700 truncate">{formatCurrency(totalAmount, storeSettings)}</span>
+                            <span className="text-[10px] text-slate-500 font-bold">مبلغ کل ({currency})</span>
+                            <span className="text-lg font-extrabold text-blue-700 truncate">
+                                {(currency === 'AFN' ? totalAmountAFN : (currency === 'IRT' ? Math.round(totalAmountAFN * (Number(exchangeRate)||1)) : totalAmountAFN / (Number(exchangeRate)||1))).toLocaleString()}
+                            </span>
                         </div>
                         <div className="flex items-center gap-2 w-3/5 justify-end">
                             <div className="relative">
                                 <button 
                                     onClick={() => setIsMobileCustomerMenuOpen(true)} 
-                                    className={`p-2 rounded-lg border transition-colors ${selectedCustomerId ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-white border-gray-300 text-gray-600'}`}
+                                    className={`p-2 rounded-lg border transition-colors ${selectedCustomerId ? (customers.find(c => c.id === selectedCustomerId)?.balance > (customers.find(c => c.id === selectedCustomerId)?.creditLimit || Infinity) ? 'bg-orange-100 border-orange-300 text-orange-700 animate-pulse' : 'bg-blue-100 border-blue-300 text-blue-700') : 'bg-white border-gray-300 text-gray-600'}`}
                                 >
                                     <UserGroupIcon className="w-6 h-6" />
+                                    {selectedCustomerId && customers.find(c => c.id === selectedCustomerId)?.balance > (customers.find(c => c.id === selectedCustomerId)?.creditLimit || Infinity) && (
+                                        <div className="absolute -top-1 -right-1 bg-orange-500 text-white rounded-full p-0.5"><WarningIcon className="w-2 h-2"/></div>
+                                    )}
                                 </button>
                             </div>
                             <button 
@@ -776,7 +911,7 @@ const POS: React.FC = () => {
                                 <XIcon className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="flex-grow overflow-y-auto p-4 space-y-3">
+                        <div className="flex-grow overflow-y-auto p-4 space-y-3 pb-10">
                              <div 
                                 onClick={() => { setSelectedCustomerId(''); setIsMobileCustomerMenuOpen(false); }}
                                 className={`p-4 rounded-xl flex items-center justify-between cursor-pointer border-2 transition-all ${selectedCustomerId === '' ? 'bg-blue-50 border-blue-500 shadow-md' : 'bg-white border-slate-100 hover:bg-slate-50'}`}
@@ -788,20 +923,29 @@ const POS: React.FC = () => {
                                     <span className={`font-bold ${selectedCustomerId === '' ? 'text-blue-700' : 'text-slate-700'}`}>فروش نقدی (پیش‌فرض)</span>
                                 </div>
                             </div>
-                            {customers.map((c: Customer) => (
+                            {customers.map((c: Customer) => {
+                                const isExceeded = c.balance > (c.creditLimit || Infinity);
+                                return (
                                 <div 
                                     key={c.id}
                                     onClick={() => { setSelectedCustomerId(c.id); setIsMobileCustomerMenuOpen(false); }}
-                                    className={`p-4 rounded-xl flex items-center justify-between cursor-pointer border-2 transition-all ${selectedCustomerId === c.id ? 'bg-blue-50 border-blue-500 shadow-md' : 'bg-white border-slate-100 hover:bg-slate-50'}`}
+                                    className={`p-4 rounded-xl flex flex-col cursor-pointer border-2 transition-all ${selectedCustomerId === c.id ? (isExceeded ? 'bg-orange-50 border-orange-500' : 'bg-blue-50 border-blue-500 shadow-md') : 'bg-white border-slate-100'}`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${selectedCustomerId === c.id ? 'border-blue-600 bg-blue-600' : 'border-slate-400'}`}>
-                                            {selectedCustomerId === c.id && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${selectedCustomerId === c.id ? (isExceeded ? 'border-orange-600 bg-orange-600' : 'border-blue-600 bg-blue-600') : 'border-slate-400'}`}>
+                                                {selectedCustomerId === c.id && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                            </div>
+                                            <span className={`font-bold ${selectedCustomerId === c.id ? (isExceeded ? 'text-orange-700' : 'text-blue-700') : 'text-slate-700'}`}>{c.name}</span>
                                         </div>
-                                        <span className={`font-bold ${selectedCustomerId === c.id ? 'text-blue-700' : 'text-slate-700'}`}>{c.name}</span>
+                                        {isExceeded && <WarningIcon className="w-5 h-5 text-orange-500 animate-bounce" />}
+                                    </div>
+                                    <div className="flex justify-between items-center mt-2 pr-7">
+                                        <span className="text-[10px] font-bold text-slate-400">تراز کل: {Math.round(c.balance).toLocaleString()} AFN</span>
+                                        {isExceeded && <span className="text-[10px] font-black text-orange-600 uppercase tracking-tighter">بیش از سقف اعتبار</span>}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                              {customers.length === 0 && (
                                 <p className="text-center text-slate-400 py-8">مشتری تعریف نشده است.</p>
                             )}

@@ -6,6 +6,7 @@ export const ALL_PERMISSIONS = [
     { id: 'page:purchases', name: 'مشاهده خرید', group: 'صفحات' },
     { id: 'page:in_transit', name: 'مشاهده اجناس در راه', group: 'صفحات' },
     { id: 'page:accounting', name: 'مشاهده حسابداری', group: 'صفحات' },
+    { id: 'page:deposits', name: 'مشاهده امانات', group: 'صفحات' },
     { id: 'page:reports', name: 'مشاهده گزارشات', group: 'صفحات' },
     { id: 'page:settings', name: 'مشاهده تنظیمات', group: 'صفحات' },
 
@@ -32,6 +33,7 @@ export const ALL_PERMISSIONS = [
     { id: 'accounting:manage_customers', name: 'مدیریت مشتریان', group: 'حسابداری' },
     { id: 'accounting:manage_payroll', name: 'مدیریت حقوق و دستمزد', group: 'حسابداری' },
     { id: 'accounting:manage_expenses', name: 'مدیریت مصارف', group: 'حسابداری' },
+    { id: 'accounting:manage_deposits', name: 'مدیریت امانات', group: 'حسابداری' },
 
     // Settings (Super Admin / Owner level)
     { id: 'settings:manage_store', name: 'تغییر مشخصات فروشگاه', group: 'تنظیمات' },

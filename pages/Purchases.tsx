@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { PurchaseInvoice, PurchaseInvoiceItem, Supplier, Product, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent } from '../types';
 import { useAppContext } from '../AppContext';
-import { PlusIcon, EditIcon, TrashIcon, PrintIcon, WarningIcon, MicIcon, SearchIcon, XIcon } from '../components/icons';
+import { PlusIcon, EditIcon, TrashIcon, PrintIcon, WarningIcon, MicIcon, SearchIcon, XIcon, TruckIcon } from '../components/icons';
 import Toast from '../components/Toast';
 import DateRangeFilter from '../components/DateRangeFilter';
 import PurchasePrintPreviewModal from '../components/PurchasePrintPreviewModal';
@@ -105,7 +105,7 @@ const Purchases: React.FC = () => {
     const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [items, setItems] = useState<PurchaseItemDraft[]>([]);
     const [productSearch, setProductSearch] = useState('');
-    const [currency, setCurrency] = useState<'AFN' | 'USD'>('AFN');
+    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
     const [exchangeRate, setExchangeRate] = useState<string>('');
 
     const [isListening, setIsListening] = useState(false);
@@ -268,13 +268,9 @@ const Purchases: React.FC = () => {
     };
 
     const totalAmount = useMemo(() => {
-        const rawTotal = items.reduce((total, item) => total + (Number(item.purchasePrice || 0) * Number(item.quantity || 0)), 0);
-        if (currency === 'USD') {
-            const rate = Number(exchangeRate) || 1;
-            return Math.round(rawTotal * rate);
-        }
-        return Math.round(rawTotal);
-    }, [items, currency, exchangeRate]);
+        // Fix: Total should just be the sum of (Price * Qty) in the currentTransactional currency
+        return Math.round(items.reduce((total, item) => total + (Number(item.purchasePrice || 0) * Number(item.quantity || 0)), 0));
+    }, [items]);
 
     const filteredProducts = useMemo(() => {
         if (!productSearch) return [];
@@ -329,7 +325,7 @@ const Purchases: React.FC = () => {
             return;
         }
 
-        if (currency === 'USD' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+        if (currency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
             showToast("لطفاً نرخ ارز را وارد کنید.");
             return;
         }
@@ -351,7 +347,7 @@ const Purchases: React.FC = () => {
             items: finalItems,
             timestamp: finalTimestamp,
             currency,
-            exchangeRate: currency === 'USD' ? Number(exchangeRate) : 1
+            exchangeRate: currency !== 'AFN' ? Number(exchangeRate) : 1
         };
 
         const result = editingPurchaseInvoiceId
@@ -372,6 +368,12 @@ const Purchases: React.FC = () => {
         } else {
             processResult(result);
         }
+    };
+
+    const getInvoiceCurrencyName = (inv: PurchaseInvoice) => {
+        if (inv.currency === 'USD') return 'دلار';
+        if (inv.currency === 'IRT') return 'تومان';
+        return 'افغانی';
     };
 
     return (
@@ -424,14 +426,23 @@ const Purchases: React.FC = () => {
                         {filteredInvoices.map((invoice) => (
                             <tr key={invoice.id} className="border-t border-gray-200/60">
                                 <td className="p-4 font-semibold text-slate-800 font-mono text-lg">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <span>{invoice.invoiceNumber || invoice.id}</span>
-                                        {invoice.type === 'return' && <span className="text-xs font-bold bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">مرجوعی</span>}
-                                        {invoice.currency === 'USD' && <span className="text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full" title="خرید ارزی (دلار)">$</span>}
+                                    <div className="flex flex-col items-center gap-1">
+                                        <div className="flex items-center gap-2">
+                                            <span>{invoice.invoiceNumber || invoice.id}</span>
+                                            {invoice.type === 'return' && <span className="text-xs font-bold bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">مرجوعی</span>}
+                                            {invoice.currency === 'USD' && <span className="text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full" title="خرید ارزی (دلار)">$</span>}
+                                            {invoice.currency === 'IRT' && <span className="text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full" title="خرید ارزی (تومان)">T</span>}
+                                        </div>
+                                        {invoice.sourceInTransitId && (
+                                            <div className="flex items-center gap-1 text-[10px] text-blue-500 font-black bg-blue-50 px-2 py-0.5 rounded-full">
+                                                <TruckIcon className="w-3 h-3"/>
+                                                <span>محموله {invoice.sourceInTransitId.slice(0,8)}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </td>
                                 <td className="p-4 text-slate-700 text-lg">{suppliers.find(s => s.id === invoice.supplierId)?.name || 'ناشناس'}</td>
-                                <td className="p-4 text-slate-700 text-lg">{formatCurrency(invoice.totalAmount, storeSettings)}</td>
+                                <td className="p-4 text-slate-700 text-lg">{formatCurrency(invoice.totalAmount, storeSettings, getInvoiceCurrencyName(invoice))}</td>
                                 <td className="p-4 text-slate-500 text-lg">{new Date(invoice.timestamp).toLocaleDateString('fa-IR')}</td>
                                 <td className="p-4">
                                     <div className="flex justify-center items-center space-x-1 space-x-reverse">
@@ -462,8 +473,10 @@ const Purchases: React.FC = () => {
                                 <div className="flex items-center gap-2 mb-2">
                                     <h3 className="font-mono font-bold text-lg text-slate-800">{invoice.invoiceNumber || invoice.id}</h3>
                                     {invoice.currency === 'USD' && <span className="text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded-full">$</span>}
+                                    {invoice.currency === 'IRT' && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full">T</span>}
                                 </div>
                                 {invoice.type === 'return' && <span className="text-xs font-bold bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">مرجوعی</span>}
+                                {invoice.sourceInTransitId && <span className="text-[9px] font-black text-blue-500 block mb-1">📦 از محموله {invoice.sourceInTransitId.slice(0,8)}</span>}
                            </div>
                            <div className="flex items-center">
                              <button onClick={() => handlePrintClick(invoice)} className="p-2 text-green-600"><PrintIcon className="w-5 h-5"/></button>
@@ -476,7 +489,7 @@ const Purchases: React.FC = () => {
                             <div className="flex justify-between"><span className="text-slate-500">تاریخ:</span> <span className="font-semibold">{new Date(invoice.timestamp).toLocaleDateString('fa-IR')}</span></div>
                          </div>
                         <div className="mt-3 pt-3 border-t">
-                             <div className="flex justify-between text-lg"><span className="text-slate-500">مبلغ کل:</span> <span className="font-bold text-blue-600">{formatCurrency(invoice.totalAmount, storeSettings)}</span></div>
+                             <div className="flex justify-between text-lg"><span className="text-slate-500">مبلغ کل:</span> <span className="font-bold text-blue-600">{formatCurrency(invoice.totalAmount, storeSettings, getInvoiceCurrencyName(invoice))}</span></div>
                         </div>
                     </div>
                 ))}
@@ -532,20 +545,30 @@ const Purchases: React.FC = () => {
                                         />
                                         <span>دلار</span>
                                     </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="radio" 
+                                            name="currency" 
+                                            value="IRT" 
+                                            checked={currency === 'IRT'} 
+                                            onChange={() => setCurrency('IRT')} 
+                                            className="form-radio text-orange-600" 
+                                        />
+                                        <span>تومان</span>
+                                    </label>
                                 </div>
-                                {currency === 'USD' && (
+                                {currency !== 'AFN' && (
                                     <div className="flex items-center gap-2 mr-auto">
-                                        <span className="text-sm font-semibold">نرخ تبدیل:</span>
+                                        <span className="text-sm font-semibold">نرخ {currency === 'USD' ? 'هر دلار به افغانی' : 'هر افغانی به تومان'}:</span>
                                         <input 
                                             name="exchangeRate"
                                             type="text" 
                                             inputMode="numeric"
                                             value={exchangeRate} 
                                             onChange={e => setExchangeRate(e.target.value.replace(/[^0-9.]/g, ''))} 
-                                            placeholder="مثلاً 68" 
+                                            placeholder="نرخ" 
                                             className="w-24 h-9 p-2 border rounded-md text-center font-mono outline-none focus:ring-2 focus:ring-blue-400" 
                                         />
-                                        <span className="text-xs text-slate-500">افغانی</span>
                                     </div>
                                 )}
                            </div>
@@ -595,7 +618,7 @@ const Purchases: React.FC = () => {
                                                 </div>
                                                 <div className="col-span-1">
                                                     <label className="text-xs font-bold text-slate-500 mb-2 block">
-                                                        قیمت خرید {currency === 'USD' ? '(دلار)' : '(افغانی)'}
+                                                        قیمت خرید ({currency})
                                                     </label>
                                                     <input type="text" name="purchasePrice" data-index={index} value={item.purchasePrice} onChange={e => handleItemChange(index, 'purchasePrice', e.target.value)} placeholder="0" className="w-full h-12 p-3 bg-white/80 border border-gray-300 rounded-lg form-input outline-none focus:ring-4 focus:ring-blue-100 font-bold text-center" />
                                                 </div>
@@ -632,8 +655,8 @@ const Purchases: React.FC = () => {
 
                         <div className="flex-shrink-0 flex flex-col md:flex-row justify-between items-center mt-6 pt-4 border-t border-slate-200">
                            <div className="text-xl md:text-2xl font-bold text-slate-700 w-full md:w-auto text-center md:text-right mb-4 md:mb-0">
-                                <span>مجموع کل (افغانی): </span>
-                                <span className="text-blue-600">{formatCurrency(totalAmount, storeSettings).replace(storeSettings.currencyName, '')}</span>
+                                <span>مجموع کل ({currency === 'USD' ? 'دلار' : (currency === 'IRT' ? 'تومان' : 'افغانی')}): </span>
+                                <span className="text-blue-600">{totalAmount.toLocaleString()} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : 'AFN')}</span>
                            </div>
                            <div className="flex w-full md:w-auto space-x-3 space-x-reverse">
                                <button type="button" onClick={handleCloseModal} className="flex-1 px-6 py-3 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors font-semibold">لغو</button>
@@ -641,7 +664,7 @@ const Purchases: React.FC = () => {
                                     type="button" 
                                     onClick={handleSaveInvoice} 
                                     disabled={hasAnyValidationError}
-                                    className={`flex-1 px-8 py-3 rounded-lg text-white shadow-lg transition-all font-semibold ${hasAnyValidationError ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 btn-primary'}`}
+                                    className={`flex-1 px-8 py-3 rounded-lg text-white font-semibold transition-all ${hasAnyValidationError ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 btn-primary'}`}
                                 >
                                     {editingPurchaseInvoiceId ? 'بروزرسانی' : 'ذخیره نهایی'}
                                 </button>

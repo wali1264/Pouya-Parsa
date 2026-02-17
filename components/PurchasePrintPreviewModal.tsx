@@ -17,12 +17,13 @@ const PurchasePrintPreviewModal: React.FC<PurchasePrintPreviewModalProps> = ({ i
         window.print();
     };
 
-    const currencySymbol = invoice.currency === 'USD' ? '$' : '';
+    const currencySymbol = invoice.currency === 'USD' ? '$' : (invoice.currency === 'IRT' ? 'ت' : '');
+    const currencyName = invoice.currency === 'USD' ? 'دلار' : (invoice.currency === 'IRT' ? 'تومان' : 'افغانی');
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-                <div id="print-modal-content" className="text-gray-900 flex-grow flex flex-col min-h-0">
+                <div id="print-modal-content" className="text-gray-900 flex-grow flex flex-col min-h-0 printable-area">
                     <div className="text-center mb-8 border-b pb-6">
                         <h1 className="text-3xl font-extrabold text-blue-600">{storeSettings.storeName}</h1>
                         <p className="text-sm text-slate-500">{storeSettings.address}</p>
@@ -43,15 +44,15 @@ const PurchasePrintPreviewModal: React.FC<PurchasePrintPreviewModalProps> = ({ i
                         <table className="min-w-full text-md">
                             <thead className="bg-slate-50 sticky top-0">
                                 <tr>
-                                    <th className="p-3 text-right font-bold">کالا</th>
-                                    <th className="p-3 font-bold">تعداد</th>
-                                    <th className="p-3 font-bold">قیمت خرید واحد</th>
-                                    <th className="p-3 text-left font-bold">قیمت کل</th>
+                                    <th className="p-3 text-right font-bold border-b">کالا</th>
+                                    <th className="p-3 font-bold border-b text-center">تعداد</th>
+                                    <th className="p-3 font-bold border-b text-center">قیمت خرید واحد</th>
+                                    <th className="p-3 text-left font-bold border-b">قیمت کل</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {invoice.items.map(item => (
-                                    <tr key={item.productId + item.lotNumber} className="border-b">
+                                    <tr key={item.productId + item.lotNumber} className="border-b last:border-0">
                                         <td className="p-3 text-right font-semibold">{item.productName}</td>
                                         <td className="p-3 text-center">{item.quantity}</td>
                                         <td className="p-3 text-center" dir="ltr">{item.purchasePrice.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} {currencySymbol}</td>
@@ -62,12 +63,9 @@ const PurchasePrintPreviewModal: React.FC<PurchasePrintPreviewModalProps> = ({ i
                         </table>
                     </div>
                     <div className="mt-8 pt-6 border-t text-left">
-                         {invoice.currency === 'USD' && (
-                             <p className="text-sm text-slate-500 mb-2">نرخ ارز: {invoice.exchangeRate} افغانی</p>
-                         )}
                         <p className="text-2xl font-bold">
-                            <span>مبلغ کل فاکتور: </span>
-                            <span className="text-blue-600">{formatCurrency(invoice.totalAmount, storeSettings)}</span>
+                            <span>مبلغ نهایی: </span>
+                            <span className="text-blue-600" dir="ltr">{formatCurrency(invoice.totalAmount, storeSettings, currencyName)}</span>
                         </p>
                     </div>
                 </div>

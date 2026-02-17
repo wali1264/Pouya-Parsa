@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { Product, ProductBatch, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent } from '../types';
 import { XIcon, ChevronDownIcon, MicIcon, WarningIcon } from './icons';
@@ -115,13 +114,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
     const [isDetailsOpen, setIsDetailsOpen] = useState(!!(product?.barcode || product?.manufacturer || product?.batches[0]?.expiryDate));
     const [errors, setErrors] = useState<{ [key: string]: string }>({});
     
+    // Multi-currency purchase states
+    const [purchaseCurrency, setPurchaseCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [purchaseExchangeRate, setPurchaseExchangeRate] = useState('');
+
     const [isListening, setIsListening] = useState(false);
     const [micError, setMicError] = useState('');
     const [recognitionLang, setRecognitionLang] = useState<'fa-IR' | 'en-US'>('fa-IR');
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const activeFieldRef = useRef<HTMLInputElement | null>(null);
 
-    const numericFields = ['purchasePrice', 'salePrice', 'itemsPerPackage', 'lotNumber', 'stockPackages', 'stockUnits'];
+    const numericFields = ['purchasePrice', 'salePrice', 'itemsPerPackage', 'lotNumber', 'stockPackages', 'stockUnits', 'purchaseExchangeRate'];
 
     // Intelligence: Check for duplicate product name
     const isNameDuplicate = useMemo(() => {
@@ -167,8 +170,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                         processedTranscript = finalTranscript.trim();
                     }
                     
-                    field.value = processedTranscript;
-                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                    if (fieldName === 'purchaseExchangeRate') {
+                        setPurchaseExchangeRate(processedTranscript);
+                    } else {
+                        field.value = processedTranscript;
+                        field.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
                 }
             };
 
@@ -208,11 +215,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
         let processedValue = value;
         if (['itemsPerPackage', 'lotNumber'].includes(name)) {
             processedValue = value.replace(/[^0-9]/g, '');
-        } else if (['purchasePrice', 'salePrice'].includes(name)) {
+        } else if (['purchasePrice', 'salePrice', 'purchaseExchangeRate'].includes(name)) {
             processedValue = value.replace(/[^0-9.]/g, '');
             if ((processedValue.match(/\./g) || []).length > 1) return;
         }
-        setFormData(prev => ({ ...prev, [name]: processedValue }));
+
+        if (name === 'purchaseExchangeRate') {
+            setPurchaseExchangeRate(processedValue);
+        } else {
+            setFormData(prev => ({ ...prev, [name]: processedValue }));
+        }
+
         if (errors[name]) {
             setErrors(prev => { const newErrors = { ...prev }; delete newErrors[name]; return newErrors; });
         }
@@ -231,6 +244,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
         if (!formData.name.trim()) newErrors.name = "نام محصول اجباری است";
         if (isNameDuplicate) newErrors.name = "محصولی با این نام قبلاً ثبت شده است";
         if (!formData.purchasePrice || Number(formData.purchasePrice) <= 0) newErrors.purchasePrice = "قیمت خرید نامعتبر است";
+        if (purchaseCurrency !== 'AFN' && (!purchaseExchangeRate || Number(purchaseExchangeRate) <= 0)) newErrors.purchaseExchangeRate = "نرخ ارز الزامی است";
         if (!formData.salePrice || Number(formData.salePrice) <= 0) newErrors.salePrice = "قیمت فروش نامعتبر است";
         if (!formData.lotNumber.trim()) newErrors.lotNumber = "شماره لات اجباری است";
         
@@ -245,15 +259,26 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (validate()) {
+            const exchangeRateValue = (purchaseCurrency === 'AFN' || product) ? 1 : Number(purchaseExchangeRate);
+            
+            // Phase 1: IRT uses Division
+            const finalPurchasePriceAFN = purchaseCurrency === 'IRT' 
+                ? Number(formData.purchasePrice) / exchangeRateValue 
+                : Number(formData.purchasePrice) * exchangeRateValue;
+
+            const finalSalePriceAFN = purchaseCurrency === 'IRT'
+                ? Number(formData.salePrice) / exchangeRateValue
+                : Number(formData.salePrice) * exchangeRateValue;
+
             const productData: ProductFormData = {
                 name: formData.name.trim(),
-                salePrice: Number(formData.salePrice), 
+                salePrice: finalSalePriceAFN, 
                 itemsPerPackage: formData.itemsPerPackage ? Number(formData.itemsPerPackage) : 1,
                 barcode: formData.barcode?.trim() || undefined,
                 manufacturer: formData.manufacturer?.trim() || undefined,
             };
             const firstBatchData: FirstBatchData = {
-                purchasePrice: Number(formData.purchasePrice),
+                purchasePrice: finalPurchasePriceAFN,
                 stock: Number(formData.stock),
                 lotNumber: formData.lotNumber.trim(),
                 purchaseDate: new Date().toISOString(),
@@ -326,8 +351,82 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                       <FormInput label="قیمت خرید" id="purchasePrice" name="purchasePrice" type="text" inputMode="decimal" value={formData.purchasePrice} onChange={handleInputChange} required error={errors.purchasePrice} onKeyDown={handleKeyDown} disabled={!!product} />
-                       <FormInput label="قیمت فروش" id="salePrice" name="salePrice" type="text" inputMode="decimal" value={formData.salePrice} onChange={handleInputChange} required error={errors.salePrice} onKeyDown={handleKeyDown} />
+                       <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-md font-semibold text-slate-700">قیمت خرید ({purchaseCurrency})</label>
+                                <div className="flex gap-1.5 bg-slate-100 p-0.5 rounded-lg border">
+                                    {['AFN', 'USD', 'IRT'].map(cur => (
+                                        <button 
+                                            key={cur}
+                                            type="button"
+                                            onClick={() => { setPurchaseCurrency(cur as any); setPurchaseExchangeRate(''); }}
+                                            className={`px-2 py-0.5 text-[10px] font-black rounded ${purchaseCurrency === cur ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                            disabled={!!product}
+                                        >
+                                            {cur}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <input 
+                                    id="purchasePrice" 
+                                    name="purchasePrice" 
+                                    type="text" 
+                                    inputMode="decimal" 
+                                    value={formData.purchasePrice} 
+                                    onChange={handleInputChange} 
+                                    required 
+                                    className={`flex-grow p-3 bg-white/80 border ${errors.purchasePrice ? 'border-red-500 ring-2 ring-red-50' : 'border-slate-300/80'} rounded-lg shadow-sm focus:ring-0 transition-all placeholder:text-slate-400 font-bold text-center form-input`}
+                                    disabled={!!product}
+                                />
+                                {purchaseCurrency !== 'AFN' && !product && (
+                                    <div className="w-24">
+                                        <input 
+                                            name="purchaseExchangeRate" 
+                                            type="text" 
+                                            inputMode="decimal" 
+                                            value={purchaseExchangeRate} 
+                                            onChange={handleInputChange} 
+                                            placeholder="نرخ" 
+                                            title="نرخ هر افغانی به ارز انتخابی"
+                                            className={`w-full h-full p-2 bg-blue-50 border-2 border-blue-200 rounded-lg text-center font-mono font-black focus:border-blue-500 outline-none ${errors.purchaseExchangeRate ? 'border-red-500' : ''}`}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            {errors.purchasePrice && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.purchasePrice}</p>}
+                            {errors.purchaseExchangeRate && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.purchaseExchangeRate}</p>}
+                            {purchaseCurrency !== 'AFN' && !product && purchaseExchangeRate && formData.purchasePrice && (
+                                <p className="text-[10px] text-blue-500 font-bold mt-1">
+                                    معادل خرید: {purchaseCurrency === 'IRT' 
+                                        ? (Number(formData.purchasePrice) / Number(purchaseExchangeRate)).toLocaleString() 
+                                        : (Number(formData.purchasePrice) * Number(purchaseExchangeRate)).toLocaleString()} افغانی
+                                </p>
+                            )}
+                       </div>
+                       
+                       <div>
+                            <FormInput 
+                                label={`قیمت فروش (${purchaseCurrency === 'AFN' || !!product ? 'AFN' : purchaseCurrency})`} 
+                                id="salePrice" 
+                                name="salePrice" 
+                                type="text" 
+                                inputMode="decimal" 
+                                value={formData.salePrice} 
+                                onChange={handleInputChange} 
+                                required 
+                                error={errors.salePrice} 
+                                onKeyDown={handleKeyDown} 
+                            />
+                            {purchaseCurrency !== 'AFN' && !product && purchaseExchangeRate && formData.salePrice && (
+                                <p className="text-[10px] text-emerald-600 font-bold mt-1">
+                                    معادل فروش: {purchaseCurrency === 'IRT' 
+                                        ? (Number(formData.salePrice) / Number(purchaseExchangeRate)).toLocaleString() 
+                                        : (Number(formData.salePrice) * Number(purchaseExchangeRate)).toLocaleString()} افغانی
+                                </p>
+                            )}
+                       </div>
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <FormInput label="تعداد در بسته" id="itemsPerPackage" name="itemsPerPackage" type="text" inputMode="numeric" value={formData.itemsPerPackage} onChange={handleInputChange} placeholder="مثال: 12" onKeyDown={handleKeyDown} />
@@ -342,7 +441,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                         </button>
                         {isDetailsOpen && (
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-5 animate-fade-in">
-                                <FormInput label="کد محصول (بارکد)" id="barcode" name="barcode" type="text" value={formData.barcode} onChange={handleInputChange} placeholder="اسکن بارکد" onKeyDown={handleKeyDown} />
+                                <FormInput label=" کد محصول (بارکد)" id="barcode" name="barcode" type="text" value={formData.barcode} onChange={handleInputChange} placeholder="اسکن بارکد" onKeyDown={handleKeyDown} />
                                 <FormInput label="شرکت سازنده" id="manufacturer" name="manufacturer" type="text" value={formData.manufacturer} onChange={handleInputChange} onKeyDown={handleKeyDown} />
                                 <FormInput label="تاریخ انقضا" id="expiryDate" name="expiryDate" type="date" value={formData.expiryDate} onChange={handleInputChange} onKeyDown={handleKeyDown} error={errors.expiryDate} disabled={!!product}/>
                             </div>

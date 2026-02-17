@@ -1,4 +1,3 @@
-
 import type { PackageUnits, StoreSettings } from '../types';
 
 export const formatStockToPackagesAndUnits = (totalStock: number, itemsPerPackage?: number): string => {
@@ -31,10 +30,11 @@ export const parseToPackageAndUnits = (totalStock: number, itemsPerPackage: numb
     return { packages, units };
 };
 
-export const formatCurrency = (amount: number, settings: StoreSettings): string => {
+export const formatCurrency = (amount: number, settings: StoreSettings, customCurrencyName?: string): string => {
     // Use maximumFractionDigits to show decimals only if they exist (e.g., 12.5) and integers as normal (e.g., 100)
     const formatted = amount.toLocaleString('fa-IR', { maximumFractionDigits: 3 });
-    return `${formatted} ${settings.currencyName}`;
+    const currency = customCurrencyName || settings.currencyName;
+    return `${formatted} ${currency}`;
 };
 
 export const numberToPersianWords = (num: number): string => {
@@ -102,7 +102,7 @@ const wordToNumberMap: { [key: string]: number } = {
 export const parseSpokenNumber = (transcript: string): string => {
     let processedTranscript = transcript.replace(/[۰-۹]/g, d => persianDigitsMap[d]);
     const words = processedTranscript.toLowerCase().split(/\s+/);
-    const numbers = words.map(word => wordToNumberMap[word] ?? parseInt(word.replace(/[^0-9]/g, ''), 10)).filter(num => !isNaN(num));
+    const numbers = words.map(word => wordToNumberMap[word] ?? parseInt(word.replace(/[^0-9.]/g, ''), 10)).filter(num => !isNaN(num));
     if (numbers.length > 0) {
         return numbers.join('');
     }

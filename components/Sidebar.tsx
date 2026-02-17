@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DashboardIcon, InventoryIcon, POSIcon, PurchaseIcon, TruckIcon, AccountingIcon, SettingsIcon, LogoutIcon, ReportsIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon, UserGroupIcon, XIcon } from './icons';
+import { DashboardIcon, InventoryIcon, POSIcon, PurchaseIcon, TruckIcon, AccountingIcon, SettingsIcon, LogoutIcon, ReportsIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon, UserGroupIcon, XIcon, SafeIcon } from './icons';
 import { useAppContext } from '../AppContext';
 
 interface SidebarProps {
@@ -44,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, storeName,
     { id: 'purchases', label: 'خرید', icon: <PurchaseIcon />, visible: accessiblePages.purchases },
     { id: 'in_transit', label: 'اجناس در راه', icon: <TruckIcon />, visible: accessiblePages.in_transit },
     { id: 'accounting', label: 'حسابداری', icon: <AccountingIcon />, visible: accessiblePages.accounting },
+    { id: 'deposits', label: 'امانات', icon: <SafeIcon className="w-6 h-6 text-indigo-600" />, visible: accessiblePages.deposits },
     { id: 'reports', label: 'گزارشات', icon: <ReportsIcon />, visible: accessiblePages.reports },
     { id: 'settings', label: 'تنظیمات', icon: <SettingsIcon />, visible: accessiblePages.settings },
   ];
@@ -100,12 +101,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, storeName,
               onClick={() => handleItemClick(item.id)}
               className={`flex items-center rounded-xl p-3 text-lg transition-all duration-300 ease-in-out transform hover:-translate-y-1 ${isCollapsed ? 'justify-center' : 'space-x-3 space-x-reverse'} ${
                 activeView === item.id 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
+                  ? (item.id === 'deposits' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30')
                   : 'text-slate-700 hover:bg-white/80 hover:text-blue-600'
               }`}
               title={isCollapsed ? item.label : ''}
             >
-              {item.icon}
+              {React.cloneElement(item.icon as React.ReactElement, { className: `w-6 h-6 ${activeView === item.id ? 'text-white' : ''}` })}
               {!isCollapsed && <span className="font-semibold whitespace-nowrap">{item.label}</span>}
             </button>
           ))}
