@@ -5,7 +5,6 @@ import type {
     CustomerTransaction, SupplierTransaction, PayrollTransaction, ActivityLog,
     User, Role, Permission, AppState, DepositHolder, DepositTransaction
 } from './types';
-import { formatCurrency } from './utils/formatters';
 import { api } from './services/supabaseService';
 import { supabase } from './utils/supabaseClient';
 
@@ -50,21 +49,22 @@ interface AppContextType extends AppState {
     completeSale: (cashier: string, customerId?: string, currency?: 'AFN'|'USD'|'IRT', exchangeRate?: number) => Promise<{ success: boolean; invoice?: SaleInvoice; message: string }>;
     beginEditSale: (invoiceId: string) => { success: boolean; message: string; customerId?: string; };
     cancelEditSale: () => void;
-    addSaleReturn: (originalInvoiceId: string, returnItems: { id: string; type: 'product' | 'service'; quantity: number }[], cashier: string) => { success: boolean, message: string };
+    addSaleReturn: (originalInvoiceId: string, returnItems: { id: string; type: 'product' | 'service'; quantity: number }[], cashier: string) => Promise<{ success: boolean, message: string }>;
     setInvoiceTransientCustomer: (invoiceId: string, customerName: string) => Promise<void>;
     
     // Purchase Actions
     addPurchaseInvoice: (invoiceData: Omit<PurchaseInvoice, 'id' | 'totalAmount' | 'items' | 'type' | 'originalInvoiceId'> & { items: Omit<PurchaseInvoiceItem, 'productName' | 'atFactoryQty' | 'inTransitQty' | 'receivedQty'>[], sourceInTransitId?: string }) => Promise<{ success: boolean, message: string, invoice?: PurchaseInvoice }>;
     beginEditPurchase: (invoiceId: string) => { success: boolean; message: string };
     cancelEditPurchase: () => void;
-    updatePurchaseInvoice: (invoiceData: Omit<PurchaseInvoice, 'id' | 'totalAmount' | 'items' | 'type' | 'originalInvoiceId'> & { items: Omit<PurchaseInvoiceItem, 'productName' | 'atFactoryQty' | 'inTransitQty' | 'receivedQty'>[] }) => { success: boolean, message: string };
-    addPurchaseReturn: (originalInvoiceId: string, returnItems: { productId: string; lotNumber: string, quantity: number }[]) => { success: boolean; message: string };
+    updatePurchaseInvoice: (invoiceData: Omit<PurchaseInvoice, 'id' | 'totalAmount' | 'items' | 'type' | 'originalInvoiceId'> & { items: Omit<PurchaseInvoiceItem, 'productName' | 'atFactoryQty' | 'inTransitQty' | 'receivedQty'>[] }) => Promise<{ success: boolean, message: string }>;
+    addPurchaseReturn: (originalInvoiceId: string, returnItems: { productId: string; lotNumber: string, quantity: number }[]) => Promise<{ success: boolean, message: string }>;
 
     // In-Transit Actions
     addInTransitInvoice: (invoiceData: Omit<InTransitInvoice, 'id' | 'totalAmount' | 'items' | 'type'> & { items: Omit<PurchaseInvoiceItem, 'productName' | 'atFactoryQty' | 'inTransitQty' | 'receivedQty'>[] }) => { success: boolean, message: string };
     updateInTransitInvoice: (invoiceData: Omit<InTransitInvoice, 'totalAmount' | 'items' | 'type'> & { items: Omit<PurchaseInvoiceItem, 'productName' | 'atFactoryQty' | 'inTransitQty' | 'receivedQty'>[] }) => { success: boolean, message: string };
     deleteInTransitInvoice: (id: string) => void;
-    moveInTransitItems: (invoiceId: string, movements: { [productId: string]: { toTransit: number, toReceived: number } }) => Promise<{ success: boolean, message: string }>;
+    archiveInTransitInvoice: (id: string) => Promise<void>;
+    moveInTransitItems: (invoiceId: string, movements: { [pid: string]: { toTransit: number, toReceived: number, lotNumber: string, expiryDate?: string } }) => Promise<{ success: boolean, message: string }>;
     addInTransitPayment: (invoiceId: string, amount: number, description: string, currency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number) => Promise<SupplierTransaction | null>;
 
     // Settings
@@ -86,6 +86,7 @@ interface AppContextType extends AppState {
     addEmployee: (employee: Omit<Employee, 'id'|'balance'>) => void;
     addEmployeeAdvance: (employeeId: string, amount: number, description: string) => void;
     processAndPaySalaries: () => { success: boolean; message: string };
+    addEmployeeAdvanceToEmployee: (employeeId: string, amount: number, description: string) => void;
     addExpense: (expense: Omit<Expense, 'id'>) => void;
 
     // Security Deposits
@@ -96,7 +97,6 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Unique Role ID for the Gmail Owner to avoid collision with custom 'Admin' roles
 const SYSTEM_SUPER_OWNER_ID = 'system-super-owner';
 
 const getDeviceId = () => {
@@ -114,7 +114,8 @@ const getDefaultState = (): AppState => {
         suppliers: [], employees: [], expenses: [], services: [], depositHolders: [], depositTransactions: [],
         storeSettings: {
             storeName: 'پویا پارسا', address: '', phone: '', lowStockThreshold: 10,
-            expiryThresholdMonths: 3, currencyName: 'افغانی', currencySymbol: 'AFN'
+            expiryThresholdMonths: 3, currencyName: 'افغانی', currencySymbol: 'AFN',
+            packageLabel: 'بسته', unitLabel: 'عدد'
         },
         cart: [], customerTransactions: [], supplierTransactions: [], payrollTransactions: [],
         activities: [], saleInvoiceCounter: 0, editingSaleInvoiceId: null, editingPurchaseInvoiceId: null,
@@ -165,11 +166,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 api.getActivities().catch(() => [])
             ]);
 
-            const { data: { session } } = await supabase.auth.getSession();
             const isSessionLocked = localStorage.getItem('kasebyar_session_locked') === 'true';
-            
-            // Critical Update: Shop is active if there's a Supabase session (Gmail owner)
-            const shopStatus = !!session?.user;
+            const cachedOwner = localStorage.getItem('kasebyar_user_identity');
+            let ownerIdentity = null;
+            if (cachedOwner) {
+                try { ownerIdentity = JSON.parse(cachedOwner); } catch(e) { console.error("Identity cache corruption", e); }
+            }
+
+            const shopStatus = !!ownerIdentity;
             localStorage.setItem('kasebyar_shop_active', String(shopStatus));
             setIsShopActive(shopStatus);
 
@@ -177,36 +181,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             let restoredUser = null;
 
             if (!isSessionLocked) {
-                // 1. Priority: Check for Staff Identity first
                 const localStaff = localStorage.getItem('kasebyar_staff_user');
                 if (localStaff && shopStatus) {
                     try {
                         const parsedStaff = JSON.parse(localStaff) as User;
                         const dbUser = users.find(u => u.id === parsedStaff.id);
-                        if (dbUser) {
-                            isAuth = true;
-                            restoredUser = dbUser;
-                        }
+                        if (dbUser) { isAuth = true; restoredUser = dbUser; }
                     } catch(e) {}
                 }
-
-                // 2. Secondary: If no staff logged in, use Owner identity from session
-                if (!restoredUser && session?.user) {
-                    const profile = await api.getProfile(session.user.id);
-                    if (profile?.is_approved) {
-                        isAuth = true;
-                        restoredUser = { 
-                            id: session.user.id, 
-                            username: session.user.email || 'Owner', 
-                            roleId: SYSTEM_SUPER_OWNER_ID 
-                        };
+                if (!restoredUser && ownerIdentity) {
+                    isAuth = true;
+                    restoredUser = { id: ownerIdentity.id, username: ownerIdentity.email || 'Owner', roleId: SYSTEM_SUPER_OWNER_ID };
+                }
+                if (!restoredUser && navigator.onLine) {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (session?.user) {
+                        const profile = await api.getProfile(session.user.id);
+                        if (profile?.is_approved) {
+                            localStorage.setItem('kasebyar_user_identity', JSON.stringify(profile));
+                            isAuth = true;
+                            restoredUser = { id: session.user.id, username: session.user.email || 'Owner', roleId: SYSTEM_SUPER_OWNER_ID };
+                            setIsShopActive(true);
+                            localStorage.setItem('kasebyar_shop_active', 'true');
+                        }
                     }
                 }
             }
 
             setState(prev => ({
                 ...prev,
-                storeSettings: (settings as StoreSettings).storeName ? (settings as StoreSettings) : prev.storeSettings,
+                storeSettings: (settings as StoreSettings).storeName ? { ...prev.storeSettings, ...settings } : prev.storeSettings,
                 users,
                 roles: roles.length > 0 ? roles : [{ id: 'admin-role', name: 'Admin', permissions: ['page:dashboard', 'page:inventory', 'page:pos', 'page:purchases', 'page:accounting', 'page:reports', 'page:settings', 'page:in_transit', 'page:deposits'] }],
                 products, services, customers: entities.customers, suppliers: entities.suppliers,
@@ -223,16 +227,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 currentUser: restoredUser
             }));
         } catch (error) {
-            console.error("Error fetching data:", error);
-            showToast("⚠️ خطا در دریافت اطلاعات.");
+            console.error("Critical Error fetching data:", error);
+            showToast("⚠️ خطا در بارگذاری برنامه. لطفاً صفحه را رفرش کنید.");
         } finally {
             if (!isSilent) setIsLoading(false);
         }
     }, [showToast]);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     const logActivity = useCallback(async (type: ActivityLog['type'], description: string, refId?: string, refType?: ActivityLog['refType']) => {
         if (!state.currentUser) return;
@@ -253,14 +255,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const deviceId = getDeviceId();
                 if (profile.current_device_id && profile.current_device_id !== deviceId) return { success: false, message: 'این حساب در دستگاه دیگری فعال است.', locked: true };
                 if (!profile.current_device_id) await api.updateProfile(data.user.id, { current_device_id: deviceId });
-                
+                localStorage.setItem('kasebyar_user_identity', JSON.stringify(profile));
                 localStorage.setItem('kasebyar_offline_auth', 'true');
                 localStorage.setItem('kasebyar_shop_active', 'true');
                 localStorage.setItem('kasebyar_session_locked', 'false');
                 setIsShopActive(true);
                 await fetchData();
                 return { success: true, message: '✅ ورود موفق و بازگشایی فروشگاه' };
-            } catch (e) { return { success: false, message: '❌ خطا در اتصال.' }; }
+            } catch (e) { return { success: false, message: '❌ خطا در اتصال به سرور جهت تایید اولیه.' }; }
         } else {
             if (localStorage.getItem('kasebyar_shop_active') !== 'true') return { success: false, message: '❌ فروشگاه قفل است. مدیر باید ابتدا وارد شود.' };
             const user = await api.verifyStaffCredentials(identifier, password);
@@ -275,39 +277,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logout = async (type: 'full' | 'switch'): Promise<{ success: boolean; message: string }> => {
         setIsLoggingOut(true);
-        // Always clear staff identity on any logout
         localStorage.removeItem('kasebyar_staff_user');
-        
         if (type === 'full') {
             try {
+                localStorage.removeItem('kasebyar_user_identity');
                 const { data: { user } } = await supabase.auth.getUser();
-                if (user) await api.updateProfile(user.id, { current_device_id: null });
+                if (user && navigator.onLine) await api.updateProfile(user.id, { current_device_id: null });
                 await supabase.auth.signOut();
                 localStorage.removeItem('kasebyar_offline_auth');
                 localStorage.setItem('kasebyar_shop_active', 'false');
                 setIsShopActive(false);
             } catch (e) {}
         }
-        
         localStorage.setItem('kasebyar_session_locked', 'true');
-        setTimeout(() => { 
-            setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); 
-            setIsLoggingOut(false); 
-        }, 500);
+        setTimeout(() => { setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); setIsLoggingOut(false); }, 500);
         return { success: true, message: 'خروج با موفقیت انجام شد.' };
     };
 
-    // HARDENED PERMISSION LOGIC - NO MORE admin-role BYPASS
     const hasPermission = useCallback((permission: Permission): boolean => {
         if (!state.currentUser) return false;
-        
-        // 1. Strict Bypass only for System Super Owner (Gmail)
         if (state.currentUser.roleId === SYSTEM_SUPER_OWNER_ID) return true;
-        
-        // 2. Check Role Array for all others (including 'Admin' role assigned to staff)
         const userRole = state.roles.find(r => r.id === state.currentUser!.roleId);
         if (!userRole || !userRole.permissions) return false;
-        
         return userRole.permissions.includes(permission);
     }, [state.currentUser, state.roles]);
 
@@ -325,9 +316,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             let updatedCurrentUser = prev.currentUser;
             if (prev.currentUser?.id === userData.id) {
                 updatedCurrentUser = { ...prev.currentUser, ...userData };
-                if (localStorage.getItem('kasebyar_staff_user')) {
-                    localStorage.setItem('kasebyar_staff_user', JSON.stringify(updatedCurrentUser));
-                }
+                if (localStorage.getItem('kasebyar_staff_user')) localStorage.setItem('kasebyar_staff_user', JSON.stringify(updatedCurrentUser));
             }
             return { ...prev, users: updatedUsers, currentUser: updatedCurrentUser };
         });
@@ -344,10 +333,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const updateRole = async (roleData: Role) => {
         await api.updateRole(roleData);
-        setState(prev => {
-            const updatedRoles = prev.roles.map(r => r.id === roleData.id ? roleData : r);
-            return { ...prev, roles: updatedRoles };
-        });
+        setState(prev => ({ ...prev, roles: prev.roles.map(r => r.id === roleData.id ? roleData : r) }));
         logActivity('login', `دسترسی‌های نقش ${roleData.name} تغییر یافت.`);
         return { success: true, message: '✅ نقش بروزرسانی شد.' };
     };
@@ -367,8 +353,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     const exportData = () => {
-        const fullState = { ...state, isAuthenticated: false, currentUser: null, cart: [] };
-        const dataStr = JSON.stringify(fullState, null, 2);
+        const dataStr = JSON.stringify({ ...state, isAuthenticated: false, currentUser: null, cart: [] }, null, 2);
         const blob = new Blob([dataStr], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -393,13 +378,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const cloudBackup = async (isSilent = false) => {
         if (!navigator.onLine || !state.currentUser) return false;
-        const fullState = { ...state, isAuthenticated: false, currentUser: null, cart: [] };
         try {
-            const success = await api.saveCloudBackup(state.currentUser.id, fullState);
-            if (success) {
-                localStorage.setItem('kasebyar_last_backup', Date.now().toString());
-                return true;
-            } else return false;
+            const success = await api.saveCloudBackup(state.currentUser.id, { ...state, isAuthenticated: false, currentUser: null, cart: [] });
+            if (success) localStorage.setItem('kasebyar_last_backup', Date.now().toString());
+            return success;
         } catch (error) { return false; }
     };
 
@@ -407,11 +389,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (!navigator.onLine || !state.currentUser) return false;
         try {
             const data = await api.getCloudBackup(state.currentUser.id);
-            if (data) {
-                await api.clearAndRestoreData(data);
-                await fetchData(); 
-                return true;
-            } else return false;
+            if (data) { await api.clearAndRestoreData(data); await fetchData(); return true; }
+            return false;
         } catch (error) { return false; }
     };
 
@@ -423,24 +402,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         api.updateProduct(p).then(() => { setState(prev => ({ ...prev, products: prev.products.map(x => x.id === p.id ? p : x) })); logActivity('inventory', `ویرایش: ${p.name}`, p.id, 'product'); }); 
         return { success: true, message: 'ویرایش شد.' }; 
     };
-    const deleteProduct = (id: string) => {
-        api.deleteProduct(id).then(() => { setState(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) })); });
-    };
+    const deleteProduct = (id: string) => { api.deleteProduct(id).then(() => setState(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) }))); };
 
     const addToCart = (item: any, type: any) => {
-        let success = false, message = '';
+        let success = true;
         setState(prev => {
             const existing = prev.cart.findIndex(i => i.id === item.id && i.type === type);
             if (existing > -1) {
                 const up = [...prev.cart];
                 up[existing].quantity += 1;
-                success = true;
                 return { ...prev, cart: up };
             }
-            success = true;
             return { ...prev, cart: [...prev.cart, { ...item, quantity: 1, type } as any] };
         });
-        return { success, message };
+        return { success, message: '' };
     };
 
     const updateCartItemQuantity = (id: string, type: any, qty: number) => {
@@ -456,60 +431,572 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState(prev => ({ ...prev, cart: prev.cart.filter(i => !(i.id === id && i.type === type)) }));
     };
 
+    // --- Standardized POS Logic: Sales with FIFO Stock Updates and Atomic Replacement ---
     const completeSale = async (cashier: string, customerId?: string, currency: 'AFN'|'USD'|'IRT' = 'AFN', exchangeRate: number = 1): Promise<{ success: boolean; invoice?: SaleInvoice; message: string }> => {
-        const { cart, products, editingSaleInvoiceId, customers, saleInvoices } = state;
-        if (cart.length === 0) return { success: false, message: "خالی است!" };
-        const totalAmountAFN = cart.reduce((t, i) => ((i.type === 'product' && i.finalPrice !== undefined ? i.finalPrice : (i.type === 'product' ? i.salePrice : i.price)) * i.quantity) + t, 0);
-        const invId = editingSaleInvoiceId || generateNextId('F', saleInvoices.map(i => i.id));
-        const finalInv: SaleInvoice = { id: invId, type: 'sale', items: [...cart], subtotal: totalAmountAFN, totalAmount: totalAmountAFN, totalAmountAFN, totalDiscount: 0, timestamp: new Date().toISOString(), cashier, customerId, currency, exchangeRate };
+        const { cart, products, editingSaleInvoiceId, saleInvoices, customers } = state;
+        if (cart.length === 0) return { success: false, message: "سبد خالی است!" };
+
+        const oldInv = editingSaleInvoiceId ? saleInvoices.find(inv => inv.id === editingSaleInvoiceId) : null;
         
+        // 1. Virtual Inventory Restoration for FIFO Calculation
+        const virtualProducts = JSON.parse(JSON.stringify(products)) as Product[];
+        if (oldInv) {
+            oldInv.items.forEach(item => {
+                if (item.type === 'product' && item.batchDeductions) {
+                    item.batchDeductions.forEach(d => {
+                        const vp = virtualProducts.find(p => p.batches.some(b => b.id === d.batchId));
+                        const vb = vp?.batches.find(b => b.id === d.batchId);
+                        if (vb) vb.stock += d.quantity;
+                    });
+                }
+            });
+        }
+
+        // 2. FIFO Calculation on Virtual Inventory
+        const stockUpdates: {batchId: string, newStock: number}[] = [];
+        const itemsWithBatches = cart.map(item => {
+            if (item.type === 'product') {
+                const p = virtualProducts.find(x => x.id === item.id);
+                if (p) {
+                    let remainingToDeduct = item.quantity;
+                    const deductions: { batchId: string, quantity: number }[] = [];
+                    const sortedBatches = [...p.batches].sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+                    
+                    for (const b of sortedBatches) {
+                        if (remainingToDeduct <= 0) break;
+                        const deduct = Math.min(b.stock, remainingToDeduct);
+                        if (deduct > 0) {
+                            deductions.push({ batchId: b.id, quantity: deduct });
+                            b.stock -= deduct; // Update virtual stock
+                            
+                            // Track final stock for this batch
+                            const existingUpdate = stockUpdates.find(u => u.batchId === b.id);
+                            if (existingUpdate) existingUpdate.newStock = b.stock;
+                            else stockUpdates.push({ batchId: b.id, newStock: b.stock });
+                            
+                            remainingToDeduct -= deduct;
+                        }
+                    }
+                    const totalCost = deductions.reduce((s, d) => s + (d.quantity * (p.batches.find(bx => bx.id === d.batchId)?.purchasePrice || 0)), 0);
+                    return { ...item, batchDeductions: deductions, purchasePrice: deductions.length > 0 ? totalCost / item.quantity : 0 };
+                }
+            }
+            return item;
+        });
+
+        // 3. Financial Totals
+        const subtotal = cart.reduce((t, i) => {
+            const price = (i.type === 'product' && i.finalPrice !== undefined) ? i.finalPrice : (i.type === 'product' ? i.salePrice : i.price);
+            return (price * i.quantity) + t;
+        }, 0);
+        const totalAmountAFN = currency === 'AFN' ? subtotal : (currency === 'IRT' ? subtotal / exchangeRate : subtotal * exchangeRate);
+        const invId = editingSaleInvoiceId || generateNextId('F', saleInvoices.map(i => i.id));
+        const finalInv: SaleInvoice = { id: invId, type: 'sale', items: itemsWithBatches, subtotal, totalAmount: subtotal, totalAmountAFN, totalDiscount: 0, timestamp: new Date().toISOString(), cashier, customerId, currency, exchangeRate };
+
+        // 4. Atomic Balance Update
+        const customerUpdates: {id: string, newBalances: {AFN: number, USD: number, IRT: number, Total: number}}[] = [];
+        
+        // Revert Old
+        if (oldInv && oldInv.customerId) {
+            const oc = customers.find(c => c.id === oldInv.customerId);
+            if (oc) {
+                let balAFN = oc.balanceAFN, balUSD = oc.balanceUSD, balIRT = oc.balanceIRT, balTotal = oc.balance;
+                if (oldInv.currency === 'USD') balUSD -= oldInv.totalAmount;
+                else if (oldInv.currency === 'IRT') balIRT -= oldInv.totalAmount;
+                else balAFN -= oldInv.totalAmount;
+                balTotal -= oldInv.totalAmountAFN;
+                customerUpdates.push({ id: oc.id, newBalances: { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal } });
+            }
+        }
+
+        // Apply New
+        if (customerId) {
+            const nc = customers.find(c => c.id === customerId);
+            if (nc) {
+                const prevUpdate = customerUpdates.find(u => u.id === customerId);
+                let balAFN = prevUpdate ? prevUpdate.newBalances.AFN : nc.balanceAFN;
+                let balUSD = prevUpdate ? prevUpdate.newBalances.USD : nc.balanceUSD;
+                let balIRT = prevUpdate ? prevUpdate.newBalances.IRT : nc.balanceIRT;
+                let balTotal = prevUpdate ? prevUpdate.newBalances.Total : nc.balance;
+
+                if (currency === 'USD') balUSD += subtotal;
+                else if (currency === 'IRT') balIRT += subtotal;
+                else balAFN += subtotal;
+                balTotal += totalAmountAFN;
+
+                const finalBal = { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal };
+                if (prevUpdate) prevUpdate.newBalances = finalBal;
+                else customerUpdates.push({ id: nc.id, newBalances: finalBal });
+            }
+        }
+
+        const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: subtotal, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency };
+
         try {
-            await api.createSale(finalInv, [], undefined);
+            if (editingSaleInvoiceId) {
+                const stockRestores: {batchId: string, quantity: number}[] = [];
+                oldInv?.items.forEach(it => {
+                    if (it.type === 'product' && it.batchDeductions) {
+                        it.batchDeductions.forEach(d => stockRestores.push(d));
+                    }
+                });
+                await api.updateSale(editingSaleInvoiceId, finalInv, stockRestores, stockUpdates, customerUpdates, tx);
+            } else {
+                await api.createSale(finalInv, stockUpdates, customerUpdates[0] ? { ...customerUpdates[0], transaction: tx } : undefined);
+            }
+            
             await fetchData(true);
             setState(prev => ({ ...prev, cart: [], editingSaleInvoiceId: null }));
-            return { success: true, invoice: finalInv, message: 'ثبت شد.' };
-        } catch (e) { return { success: false, message: 'خطا.' }; }
+            logActivity('sale', `${editingSaleInvoiceId ? 'ویرایش' : 'ثبت'} فاکتور فروش: ${invId}`, invId, 'saleInvoice');
+            return { success: true, invoice: finalInv, message: 'فاکتور با موفقیت ثبت شد.' };
+        } catch (e) { return { success: false, message: 'خطا در ثبت نهایی فاکتور.' }; }
+    };
+
+    // --- Standardized POS Logic: Sale Returns with Inventory Referencing ---
+    const addSaleReturn = async (originalInvoiceId: string, returnItems: { id: string; type: 'product' | 'service'; quantity: number }[], cashier: string): Promise<{ success: boolean, message: string }> => {
+        const { saleInvoices, products, customers } = state;
+        const originalInv = saleInvoices.find(inv => inv.id === originalInvoiceId);
+        if (!originalInv) return { success: false, message: "فاکتور اصلی یافت نشد." };
+
+        const stockRestores: { batchId: string, quantity: number }[] = [];
+        let returnTotalAFN = 0;
+        let returnTotalTransactional = 0;
+
+        const returnItemsDetails: CartItem[] = returnItems.map(ret => {
+            const originalItem = originalInv.items.find(it => it.id === ret.id && it.type === ret.type);
+            if (!originalItem) throw new Error("کالا در فاکتور اصلی یافت نشد.");
+            if (ret.quantity > originalItem.quantity) throw new Error("تعداد مرجوعی بیش از تعداد فروخته شده است.");
+
+            const itemPriceAFN = (originalItem.type === 'product' && originalItem.finalPrice !== undefined) ? originalItem.finalPrice : (originalItem.type === 'product' ? originalItem.salePrice : originalItem.price);
+            const rate = originalInv.exchangeRate || 1;
+            
+            returnTotalTransactional += (itemPriceAFN * ret.quantity);
+            const lineTotalAFN = originalInv.currency === 'AFN' ? (itemPriceAFN * ret.quantity) : 
+                               (originalInv.currency === 'IRT' ? (itemPriceAFN * ret.quantity) / rate : (itemPriceAFN * ret.quantity) * rate);
+            returnTotalAFN += lineTotalAFN;
+
+            if (originalItem.type === 'product' && originalItem.batchDeductions) {
+                let remainingToRestore = ret.quantity;
+                originalItem.batchDeductions.forEach(d => {
+                    if (remainingToRestore <= 0) return;
+                    const restoreQty = Math.min(d.quantity, remainingToRestore);
+                    stockRestores.push({ batchId: d.batchId, quantity: restoreQty });
+                    remainingToRestore -= restoreQty;
+                });
+            }
+
+            return { ...originalItem, quantity: ret.quantity } as CartItem;
+        });
+
+        const returnId = generateNextId('R', saleInvoices.map(i => i.id));
+        const returnInv: SaleInvoice = {
+            id: returnId,
+            type: 'return',
+            originalInvoiceId,
+            items: returnItemsDetails,
+            subtotal: returnTotalTransactional,
+            totalAmount: returnTotalTransactional,
+            totalAmountAFN: returnTotalAFN,
+            totalDiscount: 0,
+            timestamp: new Date().toISOString(),
+            cashier,
+            customerId: originalInv.customerId,
+            currency: originalInv.currency,
+            exchangeRate: originalInv.exchangeRate
+        };
+
+        let customerRefund = undefined;
+        if (originalInv.customerId) {
+            const customer = customers.find(c => c.id === originalInv.customerId);
+            if (customer) {
+                const newBalances = { ...customer };
+                if (originalInv.currency === 'USD') newBalances.balanceUSD -= returnTotalTransactional;
+                else if (originalInv.currency === 'IRT') newBalances.balanceIRT -= returnTotalTransactional;
+                else newBalances.balanceAFN -= returnTotalTransactional;
+                newBalances.balance -= returnTotalAFN;
+
+                customerRefund = {
+                    id: originalInv.customerId,
+                    amount: returnTotalTransactional,
+                    currency: originalInv.currency,
+                    newBalances: { AFN: newBalances.balanceAFN, USD: newBalances.balanceUSD, IRT: newBalances.balanceIRT, Total: newBalances.balance }
+                };
+            }
+        }
+
+        try {
+            await api.createSaleReturn(returnInv, stockRestores, customerRefund);
+            await fetchData(true);
+            logActivity('sale', `ثبت مرجوعی فروش: فاکتور ${returnId} (مرجع: ${originalInvoiceId})`, returnId, 'saleInvoice');
+            return { success: true, message: "مرجوعی با موفقیت ثبت و انبار بروزرسانی شد." };
+        } catch (e) {
+            return { success: false, message: "خطا در ثبت مرجوعی." };
+        }
     };
 
     const beginEditSale = (id: string) => {
         const inv = state.saleInvoices.find(i => i.id === id);
-        if (!inv) return { success: false, message: "یافت نشد." };
+        if (!inv) return { success: false, message: "فاکتور یافت نشد." };
         setState(prev => ({ ...prev, editingSaleInvoiceId: id, cart: [...inv.items] }));
-        return { success: true, message: "ویرایش.", customerId: inv.customerId };
+        return { success: true, message: "آماده ویرایش.", customerId: inv.customerId };
     };
 
     const cancelEditSale = () => setState(prev => ({ ...prev, editingSaleInvoiceId: null, cart: [] }));
-    const deleteUser = async (id: string) => { await api.deleteUser(id); await fetchData(true); };
+    
+    // --- Purchase Logic: Standardized Logic with Restoration Pattern ---
+    const addPurchaseInvoice = async (data: any) => {
+        const { suppliers, products, purchaseInvoices } = state;
+        const supplier = suppliers.find(s => s.id === data.supplierId);
+        if (!supplier) return { success: false, message: "تأمین کننده یافت نشد." };
 
-    // Placeholder actions for the rest to keep it working
-    const addInTransitInvoice = (d: any) => { api.createInTransit(d as any).then(() => fetchData(true)); return { success: true, message: 'ثبت شد' }; };
-    const updateInTransitInvoice = (d: any) => { api.updateInTransit(d as any).then(() => fetchData(true)); return { success: true, message: 'بروزرسانی شد' }; };
-    const deleteInTransitInvoice = (id: string) => { api.deleteInTransit(id).then(() => fetchData(true)); };
-    const moveInTransitItems = async (id: string, m: any) => { await api.deleteInTransit(id); await fetchData(true); return { success: true, message: 'وصول شد' }; };
-    const addInTransitPayment = async (id: string, a: number, d: string) => { return null; };
+        const id = data.id || generateNextId('P', purchaseInvoices.map(i => i.id));
+        const rate = data.exchangeRate || 1;
+        const totalCurrencyAmount = data.items.reduce((s: number, i: any) => s + (i.quantity * i.purchasePrice), 0);
+        const totalAmountAFN = data.currency === 'IRT' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate;
+
+        const purchaseItems: PurchaseInvoiceItem[] = data.items.map((it: any) => ({
+            ...it,
+            productName: products.find(p => p.id === it.productId)?.name || 'ناشناس',
+            atFactoryQty: 0, inTransitQty: 0, receivedQty: it.quantity
+        }));
+
+        const invoice: PurchaseInvoice = { ...data, id, items: purchaseItems, totalAmount: totalCurrencyAmount, type: 'purchase' };
+        
+        const newBalances = { ...supplier };
+        if (data.currency === 'USD') newBalances.balanceUSD += totalCurrencyAmount;
+        else if (data.currency === 'IRT') newBalances.balanceIRT += totalCurrencyAmount;
+        else newBalances.balanceAFN += totalCurrencyAmount;
+        newBalances.balance += totalAmountAFN;
+
+        const supplierUpdate = {
+            id: data.supplierId,
+            newBalances: { AFN: newBalances.balanceAFN, USD: newBalances.balanceUSD, IRT: newBalances.balanceIRT, Total: newBalances.balance },
+            transaction: { id: crypto.randomUUID(), supplierId: data.supplierId, type: 'purchase', amount: totalCurrencyAmount, date: data.timestamp, description: `خرید فاکتور #${data.invoiceNumber || id}`, invoiceId: id, currency: data.currency } as SupplierTransaction
+        };
+
+        const newBatches = data.items.map((it: any) => ({
+            id: crypto.randomUUID(),
+            productId: it.productId,
+            lotNumber: it.lotNumber,
+            stock: it.quantity,
+            purchasePrice: data.currency === 'IRT' ? it.purchasePrice / rate : it.purchasePrice * rate,
+            purchaseDate: data.timestamp,
+            expiryDate: it.expiryDate
+        }));
+
+        try {
+            await api.createPurchase(invoice, supplierUpdate, newBatches);
+            await fetchData(true);
+            logActivity('purchase', `خرید جدید ثبت شد: ${id}`, id, 'purchaseInvoice');
+            return { success: true, message: 'خرید با موفقیت ثبت و به انبار اضافه شد.' };
+        } catch (e) { return { success: false, message: 'خطا در ثبت خرید.' }; }
+    };
+
+    const beginEditPurchase = (id: string) => {
+        const inv = state.purchaseInvoices.find(i => i.id === id);
+        if (!inv) return { success: false, message: "فاکتور یافت نشد." };
+        setState(prev => ({ ...prev, editingPurchaseInvoiceId: id }));
+        return { success: true, message: "آماده ویرایش." };
+    };
+
+    const cancelEditPurchase = () => setState(prev => ({ ...prev, editingPurchaseInvoiceId: null }));
+
+    const updatePurchaseInvoice = async (invoiceData: any) => {
+        const { purchaseInvoices, suppliers, products, editingPurchaseInvoiceId } = state;
+        if (!editingPurchaseInvoiceId) return { success: false, message: "فاکتوری برای ویرایش انتخاب نشده است." };
+
+        const oldInv = purchaseInvoices.find(inv => inv.id === editingPurchaseInvoiceId);
+        if (!oldInv) return { success: false, message: "فاکتور قدیمی یافت نشد." };
+
+        const supplier = suppliers.find(s => s.id === invoiceData.supplierId);
+        if (!supplier) return { success: false, message: "تأمین کننده یافت نشد." };
+
+        const rate = invoiceData.exchangeRate || 1;
+        const totalCurrencyAmount = invoiceData.items.reduce((s: number, i: any) => s + (i.quantity * i.purchasePrice), 0);
+        const totalAmountAFN = invoiceData.currency === 'IRT' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate;
+
+        const oldRate = oldInv.exchangeRate || 1;
+        const oldTotalAFN = oldInv.currency === 'IRT' ? oldInv.totalAmount / oldRate : oldInv.totalAmount * oldRate;
+
+        let balAFN = supplier.balanceAFN, balUSD = supplier.balanceUSD, balIRT = supplier.balanceIRT, balTotal = supplier.balance;
+        if (oldInv.currency === 'USD') balUSD -= oldInv.totalAmount;
+        else if (oldInv.currency === 'IRT') balIRT -= oldInv.totalAmount;
+        else balAFN -= oldInv.totalAmount;
+        balTotal -= oldTotalAFN;
+
+        if (invoiceData.currency === 'USD') balUSD += totalCurrencyAmount;
+        else if (invoiceData.currency === 'IRT') balIRT += totalCurrencyAmount;
+        else balAFN += totalCurrencyAmount;
+        balTotal += totalAmountAFN;
+
+        const supplierUpdate = {
+            id: invoiceData.supplierId,
+            newBalances: { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal }
+        };
+
+        const newInvoice: PurchaseInvoice = {
+            ...oldInv,
+            ...invoiceData,
+            totalAmount: totalCurrencyAmount,
+            items: invoiceData.items.map((it: any) => ({
+                ...it,
+                productName: products.find(p => p.id === it.productId)?.name || '?',
+                atFactoryQty: 0, inTransitQty: 0, receivedQty: it.quantity
+            }))
+        };
+
+        try {
+            await api.updatePurchase(editingPurchaseInvoiceId, newInvoice, supplierUpdate);
+            await fetchData(true);
+            setState(prev => ({ ...prev, editingPurchaseInvoiceId: null }));
+            logActivity('purchase', `ویرایش فاکتور خرید: ${newInvoice.id}`, newInvoice.id, 'purchaseInvoice');
+            return { success: true, message: 'فاکتور با موفقیت بروزرسانی شد.' };
+        } catch (e) { return { success: false, message: 'خطا در ویرایش فاکتور.' }; }
+    };
+
+    const addPurchaseReturn = async (originalInvoiceId: string, returnItems: { productId: string; lotNumber: string, quantity: number }[]) => {
+        const { purchaseInvoices, suppliers, products } = state;
+        const originalInv = purchaseInvoices.find(inv => inv.id === originalInvoiceId);
+        if (!originalInv) return { success: false, message: "فاکتور اصلی یافت نشد." };
+
+        const supplier = suppliers.find(s => s.id === originalInv.supplierId);
+        if (!supplier) return { success: false, message: "تأمین کننده یافت نشد." };
+
+        const id = generateNextId('PR', purchaseInvoices.map(i => i.id));
+        const rate = originalInv.exchangeRate || 1;
+        
+        let returnTotalCurrency = 0;
+        const items = returnItems.map(ret => {
+            const originalItem = originalInv.items.find(it => it.productId === ret.productId && it.lotNumber === ret.lotNumber);
+            if (!originalItem) throw new Error("کالا در فاکتور یافت نشد");
+            returnTotalCurrency += (originalItem.purchasePrice * ret.quantity);
+            return { ...originalItem, quantity: ret.quantity, receivedQty: ret.quantity };
+        });
+
+        const totalAmountAFN = originalInv.currency === 'IRT' ? returnTotalCurrency / rate : returnTotalCurrency * rate;
+
+        const returnInv: PurchaseInvoice = {
+            id, type: 'return', originalInvoiceId, supplierId: originalInv.supplierId,
+            invoiceNumber: `R-${originalInv.invoiceNumber || originalInv.id}`,
+            items, totalAmount: returnTotalCurrency, timestamp: new Date().toISOString(),
+            currency: originalInv.currency, exchangeRate: originalInv.exchangeRate
+        };
+
+        const newBalances = { ...supplier };
+        if (originalInv.currency === 'USD') newBalances.balanceUSD -= returnTotalCurrency;
+        else if (originalInv.currency === 'IRT') newBalances.balanceIRT -= returnTotalCurrency;
+        else newBalances.balanceAFN -= returnTotalCurrency;
+        newBalances.balance -= totalAmountAFN;
+
+        const supplierRefund = {
+            id: supplier.id,
+            amount: returnTotalCurrency,
+            currency: originalInv.currency,
+            newBalances: { AFN: newBalances.balanceAFN, USD: newBalances.balanceUSD, IRT: newBalances.balanceIRT, Total: newBalances.balance }
+        };
+
+        try {
+            await api.createPurchaseReturn(returnInv, returnItems, supplierRefund);
+            await fetchData(true);
+            logActivity('purchase', `ثبت مرجوعی خرید: ${id}`, id, 'purchaseInvoice');
+            return { success: true, message: 'مرجوعی با موفقیت ثبت شد.' };
+        } catch (e) { return { success: false, message: 'خطا در ثبت مرجوعی.' }; }
+    };
+
+    // --- Logistics Logic: In-Transit Movements ---
+    const addInTransitInvoice = (d: any) => { 
+        const id = crypto.randomUUID();
+        const total = d.items.reduce((s:number, i:any) => s + (i.quantity*i.purchasePrice), 0);
+        const inv = { ...d, id, type: 'in_transit', status: 'active', totalAmount: total, items: d.items.map((it:any)=>({ ...it, productName: state.products.find(p=>p.id===it.productId)?.name || '?', atFactoryQty: it.quantity, inTransitQty: 0, receivedQty: 0 })) };
+        api.createInTransit(inv).then(() => fetchData(true)); 
+        return { success: true, message: 'سفارش در لیست انتظار ثبت شد.' }; 
+    };
+
+    const moveInTransitItems = async (invoiceId: string, movements: { [pid: string]: { toTransit: number, toReceived: number, lotNumber: string, expiryDate?: string } }) => {
+        const inv = state.inTransitInvoices.find(i => i.id === invoiceId);
+        if (!inv) return { success: false, message: "سفارش یافت نشد." };
+
+        const receivedItemsForInvoice: any[] = [];
+        const updatedItems = inv.items.map(item => {
+            const m = movements[item.productId];
+            if (!m) return item;
+            
+            const toT = Math.min(m.toTransit, item.atFactoryQty);
+            const toR = Math.min(m.toReceived, item.inTransitQty + toT);
+            
+            if (toR > 0) {
+                receivedItemsForInvoice.push({
+                    productId: item.productId,
+                    quantity: toR,
+                    purchasePrice: item.purchasePrice,
+                    lotNumber: m.lotNumber,
+                    expiryDate: m.expiryDate
+                });
+            }
+
+            return { 
+                ...item, 
+                atFactoryQty: item.atFactoryQty - toT, 
+                inTransitQty: item.inTransitQty + toT - toR, 
+                receivedQty: item.receivedQty + toR 
+            };
+        });
+
+        if (receivedItemsForInvoice.length > 0) {
+            const subInvoiceId = generateNextId('P', state.purchaseInvoices.map(i => i.id));
+            const subInvoiceData = {
+                id: subInvoiceId,
+                supplierId: inv.supplierId,
+                invoiceNumber: `Part-${inv.invoiceNumber || inv.id.slice(0,5)}`,
+                items: receivedItemsForInvoice,
+                timestamp: new Date().toISOString(),
+                currency: inv.currency,
+                exchangeRate: inv.exchangeRate,
+                sourceInTransitId: inv.id
+            };
+            await addPurchaseInvoice(subInvoiceData);
+        }
+
+        const isFullyReceived = updatedItems.every(i => i.atFactoryQty === 0 && i.inTransitQty === 0);
+        if (isFullyReceived) {
+            await api.updateInTransit({ ...inv, items: updatedItems, status: 'closed' });
+        } else {
+            await api.updateInTransit({ ...inv, items: updatedItems });
+        }
+        
+        await fetchData(true);
+        logActivity('inventory', `وصول محموله: ${inv.invoiceNumber || inv.id.slice(0,8)}`, inv.id, 'purchaseInvoice');
+        return { success: true, message: 'جابجایی کالا و اسناد مالی با موفقیت بروزرسانی شد.' };
+    };
+
+    const archiveInTransitInvoice = async (id: string) => {
+        const inv = state.inTransitInvoices.find(i => i.id === id);
+        if (inv) {
+            await api.updateInTransit({ ...inv, status: 'closed' });
+            await fetchData(true);
+            logActivity('inventory', `بایگانی دستی محموله: ${inv.invoiceNumber || inv.id.slice(0,8)}`, inv.id, 'purchaseInvoice');
+        }
+    };
+
+    const addInTransitPayment = async (invId: string, amount: number, description: string, currency: 'AFN' | 'USD' | 'IRT' = 'AFN', exchangeRate: number = 1) => {
+        const inv = state.inTransitInvoices.find(i => i.id === invId);
+        if (!inv) return null;
+
+        // 1. Calculate precise amount in the invoice's original currency for internal tracking
+        let amountInInvoiceCurrency = amount;
+        if (currency !== inv.currency) {
+            // First, convert the payment to base currency (AFN)
+            const amountInAFN = currency === 'IRT' ? amount / exchangeRate : amount * (currency === 'USD' ? exchangeRate : 1);
+            
+            // Then, convert from base (AFN) back to the invoice currency using the invoice's own historical rate
+            const invoiceRate = inv.exchangeRate || 1;
+            amountInInvoiceCurrency = inv.currency === 'IRT' 
+                ? amountInAFN * invoiceRate 
+                : amountInAFN / (inv.currency === 'USD' ? invoiceRate : 1);
+        }
+
+        // 2. Create updated invoice object with the newly added payment (Immutable Update)
+        const updatedInv: InTransitInvoice = { 
+            ...inv, 
+            paidAmount: (inv.paidAmount || 0) + amountInInvoiceCurrency 
+        };
+
+        // 3. Persist the logistics update to the database first
+        await api.updateInTransit(updatedInv);
+        
+        // 4. Record the financial transaction in the supplier's account
+        // Note: addSupplierPayment internally calls fetchData(true) which refreshes the state
+        const tx = await addSupplierPayment(inv.supplierId, amount, description, currency, exchangeRate);
+        
+        return tx;
+    };
+
+    // --- Basic Actions & Placeholders ---
+    const deleteUser = async (id: string) => { await api.deleteUser(id); await fetchData(true); };
     const updateSettings = (n: any) => { api.updateSettings(n).then(() => fetchData(true)); };
     const addService = (s: any) => { api.addService(s).then(() => fetchData(true)); };
     const deleteService = (id: string) => { api.deleteService(id).then(() => fetchData(true)); };
-    const addSupplier = (s: any) => { api.addSupplier(s).then(() => fetchData(true)); };
+    
+    const addSupplier = (s: any, initial?: any) => { 
+        api.addSupplier(s).then(ns => {
+            if (initial && initial.amount > 0) {
+                const rate = initial.exchangeRate || 1;
+                const afnAmount = initial.currency === 'IRT' ? initial.amount / rate : initial.amount * rate;
+                const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: ns.id, type: initial.type === 'creditor' ? 'purchase' : 'payment', amount: initial.amount, date: new Date().toISOString(), description: 'تراز اول دوره', currency: initial.currency };
+                const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'creditor' ? afnAmount : -afnAmount };
+                api.processPayment('supplier', ns.id, newB, tx).then(() => fetchData(true));
+            } else fetchData(true);
+        });
+    };
     const deleteSupplier = (id: string) => { api.deleteSupplier(id).then(() => fetchData(true)); };
-    const addSupplierPayment = async (sid: string, a: number, d: string) => { await fetchData(true); return {} as any; };
-    const addCustomer = (c: any) => { api.addCustomer(c).then(() => fetchData(true)); };
+    const addSupplierPayment = async (sid: string, a: number, d: string, cur: any = 'AFN', rate: number = 1) => {
+        const s = state.suppliers.find(x => x.id === sid);
+        const afnAmount = cur === 'IRT' ? a / rate : a * rate;
+        const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: sid, type: 'payment', amount: a, date: new Date().toISOString(), description: d, currency: cur };
+        const newB = { AFN: s!.balanceAFN - (cur==='AFN'?a:0), USD: s!.balanceUSD - (cur==='USD'?a:0), IRT: s!.balanceIRT - (cur==='IRT'?a:0), Total: s!.balance - afnAmount };
+        await api.processPayment('supplier', sid, newB, tx);
+        await fetchData(true);
+        return tx;
+    };
+
+    const addCustomer = (c: any, initial?: any) => {
+        api.addCustomer(c).then(nc => {
+            if (initial && initial.amount > 0) {
+                const rate = initial.exchangeRate || 1;
+                const afnAmount = initial.currency === 'IRT' ? initial.amount / rate : initial.amount * rate;
+                const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: nc.id, type: initial.type === 'debtor' ? 'credit_sale' : 'payment', amount: initial.amount, date: new Date().toISOString(), description: 'تراز اول دوره', currency: initial.currency };
+                const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'debtor' ? afnAmount : -afnAmount };
+                api.processPayment('customer', nc.id, newB, tx).then(() => fetchData(true));
+            } else fetchData(true);
+        });
+    };
     const deleteCustomer = (id: string) => { api.deleteCustomer(id).then(() => fetchData(true)); };
-    const addCustomerPayment = (cid: string, a: number, d: string) => { fetchData(true); return {} as any; };
+    const addCustomerPayment = (cid: string, a: number, d: string, cur: any = 'AFN', rate: number = 1) => {
+        const c = state.customers.find(x => x.id === cid);
+        const afnAmount = cur === 'IRT' ? a / rate : a * rate;
+        const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: cid, type: 'payment', amount: a, date: new Date().toISOString(), description: d, currency: cur };
+        const newB = { AFN: c!.balanceAFN - (cur==='AFN'?a:0), USD: c!.balanceUSD - (cur==='USD'?a:0), IRT: c!.balanceIRT - (cur==='IRT'?a:0), Total: c!.balance - afnAmount };
+        api.processPayment('customer', cid, newB, tx).then(() => fetchData(true));
+        return tx;
+    };
+
     const addEmployee = (e: any) => { api.addEmployee(e).then(() => fetchData(true)); };
-    const addEmployeeAdvance = (eid: string, a: number, d: string) => { fetchData(true); };
-    const processAndPaySalaries = () => { return { success: true, message: 'اوکی' }; };
+    const addEmployeeAdvance = (eid: string, a: number, d: string) => {
+        const emp = state.employees.find(x => x.id === eid);
+        const tx: PayrollTransaction = { id: crypto.randomUUID(), employeeId: eid, type: 'advance', amount: a, date: new Date().toISOString(), description: d };
+        api.processPayment('employee', eid, emp!.balance + a, tx).then(() => fetchData(true));
+    };
+    const processAndPaySalaries = () => {
+        const txs: PayrollTransaction[] = [];
+        const updates = state.employees.map(e => {
+            const net = e.monthlySalary - e.balance;
+            if (net > 0) txs.push({ id: crypto.randomUUID(), employeeId: e.id, type: 'salary_payment', amount: net, date: new Date().toISOString(), description: 'تسویه حقوق ماهانه' });
+            return { id: e.id, balance: 0 as const };
+        });
+        const totalPaid = txs.reduce((s,t) => s+t.amount, 0);
+        const expense: Expense = { id: crypto.randomUUID(), category: 'salary', amount: totalPaid, description: 'پرداخت حقوق کارکنان', date: new Date().toISOString() };
+        api.processPayroll(updates, txs, expense).then(() => fetchData(true));
+        return { success: true, message: 'حقوق تمام کارکنان تسویه و در مصارف ثبت شد.' };
+    };
     const addExpense = (e: any) => { api.addExpense(e).then(() => fetchData(true)); };
     const addDepositHolder = async (h: any) => { await api.addDepositHolder(h); await fetchData(true); };
     const deleteDepositHolder = async (id: string) => { await api.deleteDepositHolder(id); await fetchData(true); };
-    const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string) => { await fetchData(true); return { success: true, message: 'ثبت شد' }; };
-    const addPurchaseInvoice = async (d: any) => { return { success: true, message: 'ثبت شد' }; };
-    const beginEditPurchase = (id: string) => ({ success: true, message: '' });
-    const cancelEditPurchase = () => {};
-    const updatePurchaseInvoice = (d: any) => ({ success: true, message: '' });
-    const addPurchaseReturn = (id: string, i: any) => ({ success: true, message: '' });
-    const addSaleReturn = (id: string, i: any, c: string) => ({ success: true, message: '' });
+    const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string) => {
+        const holder = state.depositHolders.find(x => x.id === hid);
+        const tx: DepositTransaction = { id: crypto.randomUUID(), holderId: hid, type: t, amount: a, currency: c, description: d, date: new Date().toISOString() };
+        const newH = { ...holder! };
+        const factor = t === 'deposit' ? 1 : -1;
+        if (c === 'AFN') newH.balanceAFN += factor * a; else if (c === 'USD') newH.balanceUSD += factor * a; else newH.balanceIRT += factor * a;
+        await api.updateDepositHolder(newH);
+        await api.addDepositTransaction(tx);
+        await fetchData(true);
+        return { success: true, message: 'تراکنش با موفقیت ثبت شد.' };
+    };
+
     const setInvoiceTransientCustomer = async (id: string, n: string) => {};
+    const updateInTransitInvoice = (d: any) => { api.updateInTransit(d as any).then(() => fetchData(true)); return { success: true, message: 'بروزرسانی شد' }; };
+    const deleteInTransitInvoice = (id: string) => { api.deleteInTransit(id).then(() => fetchData(true)); };
+    const addEmployeeAdvanceToEmployee = (eid: string, a: number, d: string) => { addEmployeeAdvance(eid, a, d); };
 
     if (isLoading) return <div className="flex items-center justify-center h-screen text-xl font-bold text-blue-600">در حال دریافت اطلاعات...</div>;
 
@@ -518,9 +1005,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cloudBackup, cloudRestore, autoBackupEnabled, setAutoBackupEnabled,
         addProduct, updateProduct, deleteProduct, addToCart, updateCartItemQuantity, updateCartItemFinalPrice, removeFromCart, completeSale,
         beginEditSale, cancelEditSale, addSaleReturn, addPurchaseInvoice, beginEditPurchase, cancelEditPurchase, updatePurchaseInvoice, addPurchaseReturn,
-        addInTransitInvoice, updateInTransitInvoice, deleteInTransitInvoice, moveInTransitItems, addInTransitPayment,
+        addInTransitInvoice, updateInTransitInvoice, deleteInTransitInvoice, archiveInTransitInvoice, moveInTransitItems, addInTransitPayment,
         updateSettings, addService, deleteService, addSupplier, deleteSupplier, addSupplierPayment, addCustomer, deleteCustomer, addCustomerPayment,
-        addEmployee, addEmployeeAdvance, processAndPaySalaries, addExpense, setInvoiceTransientCustomer,
+        addEmployee, addEmployeeAdvance, addEmployeeAdvanceToEmployee, processAndPaySalaries, addExpense, setInvoiceTransientCustomer,
         addDepositHolder, deleteDepositHolder, processDepositTransaction
     }}>{children}</AppContext.Provider>;
 };

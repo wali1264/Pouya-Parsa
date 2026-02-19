@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Product, ActivityLog, InvoiceItem } from '../types';
+import type { Product, ActivityLog, InvoiceItem, StoreSettings } from '../types';
 import { useAppContext } from '../AppContext';
 import { POSIcon, InventoryIcon, PurchaseIcon, WarningIcon, BellIcon, UserGroupIcon, EyeIcon, XIcon, ChevronDownIcon, CheckIcon } from '../components/icons';
 import { formatCurrency, formatStockToPackagesAndUnits } from '../utils/formatters';
@@ -39,8 +38,9 @@ const MobileAlertDrawer: React.FC<{
     isOpen: boolean, 
     onClose: () => void, 
     lowStock: any[], 
-    expiring: any[] 
-}> = ({ isOpen, onClose, lowStock, expiring }) => {
+    expiring: any[],
+    settings: StoreSettings
+}> = ({ isOpen, onClose, lowStock, expiring, settings }) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 z-[100] md:hidden flex items-end justify-center">
@@ -68,7 +68,7 @@ const MobileAlertDrawer: React.FC<{
                                 {lowStock.map(p => (
                                     <div key={p.id} className="p-3 bg-amber-50 rounded-xl border border-amber-100 flex justify-between">
                                         <span className="font-semibold text-slate-700">{p.name}</span>
-                                        <span className="font-bold text-amber-800">{p.totalStock} عدد</span>
+                                        <span className="font-bold text-amber-800">{formatStockToPackagesAndUnits(p.totalStock, settings, p.itemsPerPackage)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -104,7 +104,7 @@ const MobileAlertDrawer: React.FC<{
     );
 };
 
-const AlertCard: React.FC<{ title: string, items: { id: string, name: string, stock: number, expiryDate?: string }[], color: string, type: 'stock' | 'expiry' }> = ({ title, items, color, type }) => (
+const AlertCard: React.FC<{ title: string, items: { id: string, name: string, stock: number, expiryDate?: string, itemsPerPackage?: number }[], color: string, type: 'stock' | 'expiry', settings: StoreSettings }> = ({ title, items, color, type, settings }) => (
     <div className={`p-4 rounded-xl bg-${color}-100/70 border-r-4 border-${color}-500`}>
         <div className="flex items-center">
             <WarningIcon className={`w-6 h-6 text-${color}-600 mr-3`} />
@@ -115,7 +115,7 @@ const AlertCard: React.FC<{ title: string, items: { id: string, name: string, st
                 {items.slice(0, 5).map(p => (
                     <li key={p.id + (p as any).lotNumber}>
                         {p.name} 
-                        {type === 'stock' ? ` (موجودی: ${p.stock})` : ` (انقضا: ${new Date(p.expiryDate!).toLocaleDateString('fa-IR')})`}
+                        {type === 'stock' ? ` (موجودی: ${formatStockToPackagesAndUnits(p.stock, settings, p.itemsPerPackage)})` : ` (انقضا: ${new Date(p.expiryDate!).toLocaleDateString('fa-IR')})`}
                     </li>
                 ))}
                 {items.length > 5 && <li>و {items.length - 5} مورد دیگر...</li>}
@@ -206,13 +206,14 @@ const Dashboard: React.FC = () => {
     };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 max-7xl mx-auto">
       {viewingActivity && <ActivityDetailModal activity={viewingActivity} onClose={() => setViewingActivity(null)} />}
       <MobileAlertDrawer 
         isOpen={isMobileAlertsOpen} 
         onClose={() => setIsMobileAlertsOpen(false)} 
         lowStock={lowStockProducts} 
         expiring={expiringSoonProducts} 
+        settings={storeSettings}
       />
       
       {isCreditDetailsOpen && (
@@ -255,7 +256,7 @@ const Dashboard: React.FC = () => {
                                             {inv.items.map((item, idx) => {
                                                 const price = item.type === 'product' ? (item.finalPrice ?? item.salePrice) : item.price;
                                                 const total = price * item.quantity;
-                                                const qtyDisplay = item.type === 'product' ? formatStockToPackagesAndUnits(item.quantity, (item as InvoiceItem).itemsPerPackage || 1) : `${item.quantity} عدد`;
+                                                const qtyDisplay = item.type === 'product' ? formatStockToPackagesAndUnits(item.quantity, storeSettings, (item as InvoiceItem).itemsPerPackage || 1) : `${item.quantity} عدد`;
                                                 return (
                                                     <li key={idx} className="flex justify-between items-center border-b border-slate-200 last:border-0 pb-2 last:pb-0">
                                                         <span className="text-slate-700 font-medium">{item.name}</span>
@@ -313,7 +314,7 @@ const Dashboard: React.FC = () => {
                                         {lowStockProducts.map(p => (
                                             <li key={p.id} className="flex justify-between p-1.5 bg-amber-50/70 rounded">
                                                 <span>{p.name}</span>
-                                                <span className="font-bold">{p.totalStock} عدد</span>
+                                                <span className="font-bold">{formatStockToPackagesAndUnits(p.totalStock, storeSettings, p.itemsPerPackage)}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -362,8 +363,8 @@ const Dashboard: React.FC = () => {
 
        {/* Desktop Alert Cards */}
        <div className="hidden md:grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-          {lowStockProducts.length > 0 && <AlertCard title="کالاهای رو به اتمام" items={lowStockProducts.map(p => ({...p, stock: p.totalStock}))} color="amber" type="stock" />}
-          {expiringSoonProducts.length > 0 && <AlertCard title="کالاهای با انقضای نزدیک" items={expiringSoonProducts} color="red" type="expiry" />}
+          {lowStockProducts.length > 0 && <AlertCard title="کالاهای رو به اتمام" items={lowStockProducts.map(p => ({...p, stock: p.totalStock}))} color="amber" type="stock" settings={storeSettings} />}
+          {expiringSoonProducts.length > 0 && <AlertCard title="کالاهای با انقضای نزدیک" items={expiringSoonProducts} color="red" type="expiry" settings={storeSettings} />}
        </div>
       
       {/* Vital Stats - Horizontal Carousel on Mobile, Grid on Desktop */}

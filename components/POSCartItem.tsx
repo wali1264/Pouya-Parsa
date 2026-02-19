@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { InvoiceItem, CartItem, StoreSettings } from '../types';
 import { EditIcon, TrashIcon, CheckIcon, XIcon } from './icons';
 import PackageUnitInput from './PackageUnitInput';
+import { toEnglishDigits } from '../utils/formatters';
 
 interface PriceEditorProps {
     item: InvoiceItem;
@@ -36,9 +37,9 @@ const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, excha
                     <label className="text-[10px] font-semibold text-slate-600 block">قیمت نهایی ({currency})</label>
                     <input 
                         type="text" 
-                        inputMode="numeric"
+                        inputMode="decimal"
                         value={priceStr}
-                        onChange={(e) => setPriceStr(e.target.value.replace(/[^0-9.]/g, ''))}
+                        onChange={(e) => setPriceStr(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))}
                         className="w-full p-1 text-center font-bold border border-blue-300 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                         autoFocus
                         onKeyDown={(e) => e.key === 'Enter' && handleSave()}

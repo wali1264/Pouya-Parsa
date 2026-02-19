@@ -4,6 +4,7 @@ import type { DepositHolder, DepositTransaction } from '../types';
 import { PlusIcon, XIcon, EyeIcon, TrashIcon, SafeIcon, SearchIcon, CheckIcon } from '../components/icons';
 import Toast from '../components/Toast';
 import DepositHistoryModal from '../components/DepositHistoryModal';
+import { toEnglishDigits } from '../utils/formatters';
 
 const Modal: React.FC<{ title: string, onClose: () => void, children: React.ReactNode }> = ({ title, onClose, children }) => (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[100] p-4 pt-12 md:pt-20 overflow-y-auto modal-animate">
@@ -55,7 +56,7 @@ const SecurityDeposits: React.FC = () => {
         if (!selectedHolder || isProcessing) return;
         
         const formData = new FormData(e.currentTarget);
-        const amount = Number(formData.get('amount'));
+        const amount = Number(toEnglishDigits(formData.get('amount') as string).replace(/[^0-9.]/g, ''));
         const currency = formData.get('currency') as 'AFN' | 'USD' | 'IRT';
         const description = formData.get('description') as string;
 
@@ -97,7 +98,7 @@ const SecurityDeposits: React.FC = () => {
     }, [depositHolders, searchTerm]);
 
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <div className="p-4 md:p-8 max-7xl mx-auto">
             {toast && <Toast message={toast} onClose={() => setToast('')} />}
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
@@ -280,7 +281,7 @@ const SecurityDeposits: React.FC = () => {
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-indigo-900 mb-2">مبلغ تراکنش</label>
-                            <input name="amount" type="number" className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-2xl text-center text-indigo-800" placeholder="0" required disabled={isProcessing} />
+                            <input name="amount" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-2xl text-center text-indigo-800" placeholder="0" required disabled={isProcessing} />
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-indigo-900 mb-2">شرح تراکنش (بابتِ...)</label>

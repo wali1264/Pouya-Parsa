@@ -129,7 +129,7 @@ const Inventory: React.FC = () => {
                                         </td>
                                         <td className="p-4 font-semibold text-slate-800 text-lg">{product.name}</td>
                                         <td className="p-4 text-slate-700 text-lg">{formatCurrency(product.salePrice, storeSettings)}</td>
-                                        <td className="p-4 text-slate-700 text-lg font-bold">{formatStockToPackagesAndUnits(totalStock, product.itemsPerPackage)}</td>
+                                        <td className="p-4 text-slate-700 text-lg font-bold">{formatStockToPackagesAndUnits(totalStock, storeSettings, product.itemsPerPackage)}</td>
                                         <td className="p-4">
                                             <div className="flex justify-center items-center space-x-2 space-x-reverse">
                                                 {hasPermission('inventory:edit_product') && <button onClick={() => handleEditProductClick(product)} className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-100/50 transition-colors" title="ویرایش محصول"><EditIcon className="w-6 h-6" /></button>}
@@ -214,7 +214,7 @@ const Inventory: React.FC = () => {
                             </div>
                             <div className="space-y-2 text-md">
                                 <div className="flex justify-between"><span className="text-slate-500">قیمت فروش:</span> <span className="font-semibold">{formatCurrency(product.salePrice, storeSettings)}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">موجودی کل:</span> <span className="font-bold">{formatStockToPackagesAndUnits(totalStock, product.itemsPerPackage)}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">موجودی کل:</span> <span className="font-bold">{formatStockToPackagesAndUnits(totalStock, storeSettings, product.itemsPerPackage)}</span></div>
                             </div>
                         </div>
                     )

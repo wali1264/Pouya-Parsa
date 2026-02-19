@@ -6,7 +6,7 @@ import Toast from '../components/Toast';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import FloatingGallery from '../components/FloatingGallery';
 import * as db from '../utils/db';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, toEnglishDigits } from '../utils/formatters';
 import DateRangeFilter from '../components/DateRangeFilter';
 import POSCartItem from '../components/POSCartItem';
 import PackageUnitInput from '../components/PackageUnitInput';
@@ -274,9 +274,10 @@ const CartSide: React.FC<any> = ({
                         <div className="flex items-center gap-2">
                              <span className="text-[10px] font-black text-slate-400">نرخ تبدیل:</span>
                              <input 
-                                type="number" 
+                                type="text" 
+                                inputMode="decimal"
                                 value={exchangeRate} 
-                                onChange={e => setExchangeRate(e.target.value)} 
+                                onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
                                 className="w-20 p-1.5 border border-slate-300 rounded-lg text-center font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none" 
                                 placeholder="نرخ"
                              />
@@ -757,9 +758,10 @@ const POS: React.FC = () => {
         setReturnModalInvoice(invoice);
     };
 
-    const handleReturnSubmit = (returnItems: { id: string; type: 'product' | 'service'; quantity: number }[]) => {
+    // FIX: addSaleReturn returns a Promise, so this handler must be async and await the result.
+    const handleReturnSubmit = async (returnItems: { id: string; type: 'product' | 'service'; quantity: number }[]) => {
         if (returnModalInvoice && currentUser) {
-            const result = addSaleReturn(returnModalInvoice.id, returnItems, currentUser.username);
+            const result = await addSaleReturn(returnModalInvoice.id, returnItems, currentUser.username);
             showToast(result.message);
             if (result.success) {
                 setReturnModalInvoice(null);
@@ -832,9 +834,10 @@ const POS: React.FC = () => {
                             <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] font-bold text-slate-400">نرخ:</span>
                                 <input 
-                                    type="number" 
+                                    type="text" 
+                                    inputMode="decimal"
                                     value={exchangeRate} 
-                                    onChange={e => setExchangeRate(e.target.value)} 
+                                    onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
                                     className="w-16 p-1 border rounded font-mono text-[10px] text-center" 
                                     placeholder="نرخ"
                                 />

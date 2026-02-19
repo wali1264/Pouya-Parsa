@@ -36,7 +36,9 @@ const DEFAULT_SETTINGS: StoreSettings = {
     lowStockThreshold: 10,
     expiryThresholdMonths: 3,
     currencyName: 'افغانی',
-    currencySymbol: 'AFN'
+    currencySymbol: 'AFN',
+    packageLabel: 'بسته',
+    unitLabel: 'عدد'
 };
 
 export const api = {
@@ -104,9 +106,7 @@ export const api = {
     },
 
     // --- USERS & ROLES (LOCAL) ---
-    getUsers: async () => {
-        return db.getAll<User>(db.STORES.USERS);
-    },
+    getUsers: async () => db.getAll<User>(db.STORES.USERS),
     getRoles: async () => {
         const roles = await db.getAll<Role>(db.STORES.ROLES);
         if (roles.length === 0) {
@@ -123,22 +123,16 @@ export const api = {
     },
     updateUser: async (user: Partial<User> & { id: string }) => {
         const existing = await db.getById<User>(db.STORES.USERS, user.id);
-        if (existing) {
-            await db.putItem(db.STORES.USERS, { ...existing, ...user });
-        }
+        if (existing) await db.putItem(db.STORES.USERS, { ...existing, ...user });
     },
-    deleteUser: async (id: string) => {
-        await db.deleteItem(db.STORES.USERS, id);
-    },
+    deleteUser: async (id: string) => db.deleteItem(db.STORES.USERS, id),
     addRole: async (role: Omit<Role, 'id'>) => {
         const newId = crypto.randomUUID();
         const newRole = { ...role, id: newId };
         await db.putItem(db.STORES.ROLES, newRole);
         return newRole;
     },
-    updateRole: async (role: Role) => {
-        await db.putItem(db.STORES.ROLES, role);
-    },
+    updateRole: async (role: Role) => db.putItem(db.STORES.ROLES, role),
     deleteRole: async (id: string) => {
         if (id === 'admin-role') return;
         await db.deleteItem(db.STORES.ROLES, id);
@@ -246,22 +240,14 @@ export const api = {
         if (customerUpdate) {
             const customer = await db.getById<Customer>(db.STORES.CUSTOMERS, customerUpdate.id);
             if (customer) {
-                await db.putItem(db.STORES.CUSTOMERS, { 
-                    ...customer, 
-                    balanceAFN: customerUpdate.newBalances.AFN,
-                    balanceUSD: customerUpdate.newBalances.USD,
-                    balanceIRT: customerUpdate.newBalances.IRT,
-                    balance: customerUpdate.newBalances.Total 
-                });
+                await db.putItem(db.STORES.CUSTOMERS, { ...customer, balanceAFN: customerUpdate.newBalances.AFN, balanceUSD: customerUpdate.newBalances.USD, balanceIRT: customerUpdate.newBalances.IRT, balance: customerUpdate.newBalances.Total });
                 await db.putItem(db.STORES.CUSTOMER_TX, customerUpdate.transaction);
             }
         }
     },
 
-    updateSale: async (invoiceId: string, newInvoiceData: SaleInvoice, stockRestores: {batchId: string, quantity: number}[], stockUpdates: {batchId: string, newStock: number}[], customerUpdate?: {id: string, newBalances: {AFN: number, USD: number, IRT: number, Total: number}, transactionDescription: string}) => {
+    updateSale: async (invoiceId: string, newInvoiceData: SaleInvoice, stockRestores: {batchId: string, quantity: number}[], stockUpdates: {batchId: string, newStock: number}[], customerUpdates: {id: string, newBalances: {AFN: number, USD: number, IRT: number, Total: number}}[], transaction: CustomerTransaction) => {
         await db.putItem(db.STORES.SALE_INVOICES, newInvoiceData);
-        
-        // Restore old stocks based on batchId
         for (const restore of stockRestores) {
             const product = await findProductByBatchId(restore.batchId);
             if (product) {
@@ -269,8 +255,6 @@ export const api = {
                 await db.putItem(db.STORES.PRODUCTS, product);
             }
         }
-
-        // Apply new stock levels
         for (const update of stockUpdates) {
             const product = await findProductByBatchId(update.batchId);
             if (product) {
@@ -278,34 +262,16 @@ export const api = {
                 await db.putItem(db.STORES.PRODUCTS, product);
             }
         }
-
-        if (customerUpdate) {
-            const customer = await db.getById<Customer>(db.STORES.CUSTOMERS, customerUpdate.id);
-            if (customer) {
-                await db.putItem(db.STORES.CUSTOMERS, { 
-                    ...customer, 
-                    balanceAFN: customerUpdate.newBalances.AFN,
-                    balanceUSD: customerUpdate.newBalances.USD,
-                    balanceIRT: customerUpdate.newBalances.IRT,
-                    balance: customerUpdate.newBalances.Total 
-                });
-                
-                const txs = await db.getAll<CustomerTransaction>(db.STORES.CUSTOMER_TX);
-                const existingTx = txs.find(t => t.invoiceId === invoiceId);
-                if (existingTx) {
-                    // This logic will need more care for currency changes during edit in Phase 2
-                    existingTx.amount = newInvoiceData.totalAmount;
-                    existingTx.date = new Date().toISOString();
-                    existingTx.currency = newInvoiceData.currency || 'AFN';
-                    await db.putItem(db.STORES.CUSTOMER_TX, existingTx);
-                }
-            }
+        for (const cu of customerUpdates) {
+            const customer = await db.getById<Customer>(db.STORES.CUSTOMERS, cu.id);
+            if (customer) await db.putItem(db.STORES.CUSTOMERS, { ...customer, balanceAFN: cu.newBalances.AFN, balanceUSD: cu.newBalances.USD, balanceIRT: cu.newBalances.IRT, balance: cu.newBalances.Total });
         }
-    },
-
-    updateSaleInvoiceMetadata: async (invoiceId: string, updates: { original_invoice_id?: string | null }) => {
-        const inv = await db.getById<SaleInvoice>(db.STORES.SALE_INVOICES, invoiceId);
-        if (inv) await db.putItem(db.STORES.SALE_INVOICES, { ...inv, originalInvoiceId: updates.original_invoice_id || undefined });
+        const txs = await db.getAll<CustomerTransaction>(db.STORES.CUSTOMER_TX);
+        const existingTx = txs.find(t => t.invoiceId === invoiceId);
+        if (existingTx) {
+            Object.assign(existingTx, { amount: transaction.amount, date: transaction.date, currency: transaction.currency, customerId: transaction.customerId });
+            await db.putItem(db.STORES.CUSTOMER_TX, existingTx);
+        } else if (transaction.customerId) await db.putItem(db.STORES.CUSTOMER_TX, transaction);
     },
 
     createSaleReturn: async (returnInvoice: SaleInvoice, stockRestores: {batchId: string, quantity: number}[], customerRefund?: {id: string, amount: number, currency: 'AFN'|'USD'|'IRT', newBalances: any}) => {
@@ -320,23 +286,8 @@ export const api = {
         if (customerRefund) {
             const customer = await db.getById<Customer>(db.STORES.CUSTOMERS, customerRefund.id);
             if (customer) {
-                await db.putItem(db.STORES.CUSTOMERS, { 
-                    ...customer, 
-                    balanceAFN: customerRefund.newBalances.AFN,
-                    balanceUSD: customerRefund.newBalances.USD,
-                    balanceIRT: customerRefund.newBalances.IRT,
-                    balance: customerRefund.newBalances.Total 
-                });
-                const returnTx: CustomerTransaction = {
-                    id: crypto.randomUUID(),
-                    customerId: customerRefund.id,
-                    type: 'sale_return',
-                    amount: customerRefund.amount,
-                    date: returnInvoice.timestamp,
-                    description: `مرجوعی فاکتور #${returnInvoice.originalInvoiceId}`,
-                    invoiceId: returnInvoice.id,
-                    currency: customerRefund.currency
-                };
+                await db.putItem(db.STORES.CUSTOMERS, { ...customer, balanceAFN: customerRefund.newBalances.AFN, balanceUSD: customerRefund.newBalances.USD, balanceIRT: customerRefund.newBalances.IRT, balance: customerRefund.newBalances.Total });
+                const returnTx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerRefund.id, type: 'sale_return', amount: customerRefund.amount, date: returnInvoice.timestamp, description: `مرجوعی فاکتور #${returnInvoice.originalInvoiceId}`, invoiceId: returnInvoice.id, currency: customerRefund.currency };
                 await db.putItem(db.STORES.CUSTOMER_TX, returnTx);
             }
         }
@@ -346,62 +297,39 @@ export const api = {
         await db.putItem(db.STORES.PURCHASE_INVOICES, invoice);
         await db.putItem(db.STORES.SUPPLIER_TX, supplierUpdate.transaction);
         const supplier = await db.getById<Supplier>(db.STORES.SUPPLIERS, supplierUpdate.id);
-        if (supplier) {
-            await db.putItem(db.STORES.SUPPLIERS, { 
-                ...supplier, 
-                balanceAFN: supplierUpdate.newBalances.AFN, 
-                balanceUSD: supplierUpdate.newBalances.USD,
-                balanceIRT: supplierUpdate.newBalances.IRT,
-                balance: supplierUpdate.newBalances.Total
-            });
-        }
-        
+        if (supplier) await db.putItem(db.STORES.SUPPLIERS, { ...supplier, balanceAFN: supplierUpdate.newBalances.AFN, balanceUSD: supplierUpdate.newBalances.USD, balanceIRT: supplierUpdate.newBalances.IRT, balance: supplierUpdate.newBalances.Total });
         for (const b of newBatches) {
             const p = await db.getById<Product>(db.STORES.PRODUCTS, b.productId);
-            if (p) {
-                p.batches.push(b);
-                await db.putItem(db.STORES.PRODUCTS, p);
-            }
+            if (p) { p.batches.push(b); await db.putItem(db.STORES.PRODUCTS, p); }
         }
     },
 
     updatePurchase: async (invoiceId: string, newInvoiceData: PurchaseInvoice, supplierUpdate?: {id: string, newBalances: any}) => {
         const oldInvoice = await db.getById<PurchaseInvoice>(db.STORES.PURCHASE_INVOICES, invoiceId);
         if (oldInvoice) {
-            for (const oldItem of oldInvoice.items) {
-                const product = await db.getById<Product>(db.STORES.PRODUCTS, oldItem.productId);
+            for (const item of oldInvoice.items) {
+                const product = await db.getById<Product>(db.STORES.PRODUCTS, item.productId);
                 if (product) {
-                    const batchIndex = product.batches.findIndex(b => b.lotNumber === oldItem.lotNumber);
-                    if (batchIndex !== -1) {
-                        product.batches[batchIndex].stock -= oldItem.quantity;
-                        await db.putItem(db.STORES.PRODUCTS, product);
-                    }
+                    const bIdx = product.batches.findIndex(b => b.lotNumber === item.lotNumber);
+                    if (bIdx !== -1) { product.batches[bIdx].stock -= item.quantity; await db.putItem(db.STORES.PRODUCTS, product); }
                 }
             }
         }
 
         await db.putItem(db.STORES.PURCHASE_INVOICES, newInvoiceData);
 
-        for (const newItem of newInvoiceData.items) {
-            const product = await db.getById<Product>(db.STORES.PRODUCTS, newItem.productId);
+        for (const item of newInvoiceData.items) {
+            const product = await db.getById<Product>(db.STORES.PRODUCTS, item.productId);
             if (product) {
-                const batchIndex = product.batches.findIndex(b => b.lotNumber === newItem.lotNumber);
+                const bIdx = product.batches.findIndex(b => b.lotNumber === item.lotNumber);
                 const rate = newInvoiceData.exchangeRate || 1;
-                const priceInAFN = newItem.purchasePrice * rate;
-
-                if (batchIndex !== -1) {
-                    product.batches[batchIndex].stock += newItem.quantity;
-                    product.batches[batchIndex].purchasePrice = priceInAFN;
-                    product.batches[batchIndex].expiryDate = newItem.expiryDate;
+                const priceAFN = item.purchasePrice * rate;
+                if (bIdx !== -1) {
+                    product.batches[bIdx].stock += item.quantity;
+                    product.batches[bIdx].purchasePrice = priceAFN;
+                    product.batches[bIdx].expiryDate = item.expiryDate;
                 } else {
-                    product.batches.push({
-                        id: crypto.randomUUID(),
-                        lotNumber: newItem.lotNumber,
-                        stock: newItem.quantity,
-                        purchasePrice: priceInAFN,
-                        purchaseDate: newInvoiceData.timestamp,
-                        expiryDate: newItem.expiryDate
-                    });
+                    product.batches.push({ id: crypto.randomUUID(), lotNumber: item.lotNumber, stock: item.quantity, purchasePrice: priceAFN, purchaseDate: newInvoiceData.timestamp, expiryDate: item.expiryDate });
                 }
                 await db.putItem(db.STORES.PRODUCTS, product);
             }
@@ -410,20 +338,11 @@ export const api = {
         if (supplierUpdate) {
             const supplier = await db.getById<Supplier>(db.STORES.SUPPLIERS, supplierUpdate.id);
             if (supplier) {
-                await db.putItem(db.STORES.SUPPLIERS, { 
-                    ...supplier, 
-                    balanceAFN: supplierUpdate.newBalances.AFN, 
-                    balanceUSD: supplierUpdate.newBalances.USD, 
-                    balanceIRT: supplierUpdate.newBalances.IRT,
-                    balance: supplierUpdate.newBalances.Total
-                });
-                
+                await db.putItem(db.STORES.SUPPLIERS, { ...supplier, balanceAFN: supplierUpdate.newBalances.AFN, balanceUSD: supplierUpdate.newBalances.USD, balanceIRT: supplierUpdate.newBalances.IRT, balance: supplierUpdate.newBalances.Total });
                 const txs = await db.getAll<SupplierTransaction>(db.STORES.SUPPLIER_TX);
                 const existingTx = txs.find(t => t.invoiceId === invoiceId);
                 if (existingTx) {
-                    existingTx.amount = Math.round(newInvoiceData.items.reduce((s,i) => s + (i.quantity*i.purchasePrice), 0));
-                    existingTx.date = newInvoiceData.timestamp;
-                    existingTx.currency = newInvoiceData.currency;
+                    Object.assign(existingTx, { amount: newInvoiceData.totalAmount, date: newInvoiceData.timestamp, currency: newInvoiceData.currency });
                     await db.putItem(db.STORES.SUPPLIER_TX, existingTx);
                 }
             }
@@ -436,64 +355,31 @@ export const api = {
             const p = await db.getById<Product>(db.STORES.PRODUCTS, deduct.productId);
             if (p) {
                 const batch = p.batches.find(b => b.lotNumber === deduct.lotNumber);
-                if (batch) batch.stock = Math.max(0, batch.stock - deduct.quantity);
-                await db.putItem(db.STORES.PRODUCTS, p);
+                if (batch) { batch.stock = Math.max(0, batch.stock - deduct.quantity); await db.putItem(db.STORES.PRODUCTS, p); }
             }
         }
         if (supplierRefund) {
             const supplier = await db.getById<Supplier>(db.STORES.SUPPLIERS, supplierRefund.id);
             if (supplier) {
-                await db.putItem(db.STORES.SUPPLIERS, { 
-                    ...supplier, 
-                    balanceAFN: supplierRefund.newBalances.AFN, 
-                    balanceUSD: supplierRefund.newBalances.USD,
-                    balanceIRT: supplierRefund.newBalances.IRT,
-                    balance: supplierRefund.newBalances.Total
-                });
-                
-                const returnTx: SupplierTransaction = {
-                    id: crypto.randomUUID(),
-                    supplierId: supplierRefund.id,
-                    type: 'purchase_return',
-                    amount: supplierRefund.amount,
-                    date: returnInvoice.timestamp,
-                    description: `مرجوعی خرید فاکتور #${returnInvoice.originalInvoiceId}`,
-                    invoiceId: returnInvoice.id,
-                    currency: supplierRefund.currency
-                };
+                await db.putItem(db.STORES.SUPPLIERS, { ...supplier, balanceAFN: supplierRefund.newBalances.AFN, balanceUSD: supplierRefund.newBalances.USD, balanceIRT: supplierRefund.newBalances.IRT, balance: supplierRefund.newBalances.Total });
+                const returnTx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: supplierRefund.id, type: 'purchase_return', amount: supplierRefund.amount, date: returnInvoice.timestamp, description: `مرجوعی خرید فاکتور #${returnInvoice.originalInvoiceId}`, invoiceId: returnInvoice.id, currency: supplierRefund.currency };
                 await db.putItem(db.STORES.SUPPLIER_TX, returnTx);
             }
         }
     },
 
-    // --- IN TRANSIT OPERATIONS ---
-    createInTransit: async (invoice: InTransitInvoice) => {
-        await db.putItem(db.STORES.IN_TRANSIT_INVOICES, invoice);
-    },
-    updateInTransit: async (invoice: InTransitInvoice) => {
-        await db.putItem(db.STORES.IN_TRANSIT_INVOICES, invoice);
-    },
-    deleteInTransit: async (id: string) => {
-        await db.deleteItem(db.STORES.IN_TRANSIT_INVOICES, id);
-    },
+    createInTransit: async (invoice: InTransitInvoice) => db.putItem(db.STORES.IN_TRANSIT_INVOICES, invoice),
+    updateInTransit: async (invoice: InTransitInvoice) => db.putItem(db.STORES.IN_TRANSIT_INVOICES, invoice),
+    deleteInTransit: async (id: string) => db.deleteItem(db.STORES.IN_TRANSIT_INVOICES, id),
 
     processPayment: async (entityType: 'customer' | 'supplier' | 'employee', entityId: string, newBalance: any, transaction: any) => {
         const store = entityType === 'customer' ? db.STORES.CUSTOMERS : (entityType === 'supplier' ? db.STORES.SUPPLIERS : db.STORES.EMPLOYEES);
         const txStore = entityType === 'customer' ? db.STORES.CUSTOMER_TX : (entityType === 'supplier' ? db.STORES.SUPPLIER_TX : db.STORES.PAYROLL_TX);
-        
         const entity = await db.getById<any>(store, entityId);
         if (entity) {
             if (entityType === 'supplier' || entityType === 'customer') {
-                await db.putItem(store, { 
-                    ...entity, 
-                    balanceAFN: newBalance.AFN, 
-                    balanceUSD: newBalance.USD,
-                    balanceIRT: newBalance.IRT,
-                    balance: newBalance.Total
-                });
-            } else {
-                await db.putItem(store, { ...entity, balance: newBalance });
-            }
+                await db.putItem(store, { ...entity, balanceAFN: newBalance.AFN, balanceUSD: newBalance.USD, balanceIRT: newBalance.IRT, balance: newBalance.Total });
+            } else await db.putItem(store, { ...entity, balance: newBalance });
             await db.putItem(txStore, transaction);
         }
     },
@@ -508,44 +394,26 @@ export const api = {
     },
 
     clearAndRestoreData: async (data: AppState) => {
-        // Atomic wipe and restore
-        console.log("Wiping all local stores...");
         const stores = Object.values(db.STORES);
-        for (const storeName of stores) {
-            await db.clearStore(storeName);
-        }
-
-        console.log("Restoring settings...");
+        for (const storeName of stores) await db.clearStore(storeName);
         if (data.storeSettings) await db.putItem(db.STORES.SETTINGS, { ...data.storeSettings, id: 'current' });
-        
-        console.log("Restoring products...");
         if (data.products) for (const p of data.products) await db.putItem(db.STORES.PRODUCTS, p);
-        
-        console.log("Restoring invoices...");
         if (data.saleInvoices) for (const s of data.saleInvoices) await db.putItem(db.STORES.SALE_INVOICES, s);
         if (data.purchaseInvoices) for (const p of data.purchaseInvoices) await db.putItem(db.STORES.PURCHASE_INVOICES, p);
         if (data.inTransitInvoices) for (const i of data.inTransitInvoices) await db.putItem(db.STORES.IN_TRANSIT_INVOICES, i);
-        
-        console.log("Restoring entities...");
         if (data.customers) for (const c of data.customers) await db.putItem(db.STORES.CUSTOMERS, c);
         if (data.suppliers) for (const s of data.suppliers) await db.putItem(db.STORES.SUPPLIERS, s);
         if (data.employees) for (const e of data.employees) await db.putItem(db.STORES.EMPLOYEES, e);
         if (data.expenses) for (const e of data.expenses) await db.putItem(db.STORES.EXPENSES, e);
         if (data.services) for (const s of data.services) await db.putItem(db.STORES.SERVICES, s);
         if (data.depositHolders) for (const h of data.depositHolders) await db.putItem(db.STORES.DEPOSIT_HOLDERS, h);
-        
-        console.log("Restoring transactions...");
         if (data.customerTransactions) for (const t of data.customerTransactions) await db.putItem(db.STORES.CUSTOMER_TX, t);
         if (data.supplierTransactions) for (const t of data.supplierTransactions) await db.putItem(db.STORES.SUPPLIER_TX, t);
         if (data.payrollTransactions) for (const t of data.payrollTransactions) await db.putItem(db.STORES.PAYROLL_TX, t);
         if (data.depositTransactions) for (const t of data.depositTransactions) await db.putItem(db.STORES.DEPOSIT_TRANSACTIONS, t);
-        
-        console.log("Restoring logs and auth...");
         if (data.activities) for (const a of data.activities) await db.putItem(db.STORES.ACTIVITY, a);
         if (data.users) for (const u of data.users) await db.putItem(db.STORES.USERS, u);
         if (data.roles) for (const r of data.roles) await db.putItem(db.STORES.ROLES, r);
-        
-        console.log("Data restore process completed.");
     }
 };
 

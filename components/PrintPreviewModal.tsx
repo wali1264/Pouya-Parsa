@@ -128,10 +128,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
                                     <th rowSpan={2} className="p-1 print:p-2 text-center font-bold border border-slate-400 w-20 print:w-24">قیمت کل</th>
                                 </tr>
                                 <tr>
-                                    <th className="p-1 text-center font-bold border border-slate-400 bg-blue-50 w-12 print:w-16">بسته</th>
-                                    <th className="p-1 text-center font-bold border border-slate-400 bg-blue-50 w-12 print:w-16">عدد</th>
-                                    <th className="p-1 text-center font-bold border border-slate-400 w-16 print:w-20">فی بسته</th>
-                                    <th className="p-1 text-center font-bold border border-slate-400 w-16 print:w-20">فی عدد</th>
+                                    <th className="p-1 text-center font-bold border border-slate-400 bg-blue-50 w-12 print:w-16">{storeSettings.packageLabel || 'بسته'}</th>
+                                    <th className="p-1 text-center font-bold border border-slate-400 bg-blue-50 w-12 print:w-16">{storeSettings.unitLabel || 'عدد'}</th>
+                                    <th className="p-1 text-center font-bold border border-slate-400 w-16 print:w-20">فی {storeSettings.packageLabel || 'بسته'}</th>
+                                    <th className="p-1 text-center font-bold border border-slate-400 w-16 print:w-20">فی {storeSettings.unitLabel || 'عدد'}</th>
                                 </tr>
                             </thead>
                             <tbody>

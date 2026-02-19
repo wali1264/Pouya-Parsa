@@ -84,6 +84,7 @@ export interface InTransitInvoice extends Omit<PurchaseInvoice, 'type'> {
     type: 'in_transit';
     expectedArrivalDate?: string;
     paidAmount?: number; // Phase 2: Track prepayments specifically for this order
+    status?: 'active' | 'closed'; // Phase 2: Archiving support
 }
 
 export interface ActivityLog {
@@ -206,6 +207,8 @@ export interface StoreSettings {
     expiryThresholdMonths: number;
     currencyName: string; // e.g., 'افغانی'
     currencySymbol: string; // e.g., 'AFN'
+    packageLabel?: string; // Optional for Phase 1 Migration
+    unitLabel?: string;    // Optional for Phase 1 Migration
 }
 
 // --- Package/Unit Management ---

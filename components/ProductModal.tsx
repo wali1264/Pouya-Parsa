@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { Product, ProductBatch, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent } from '../types';
 import { XIcon, ChevronDownIcon, MicIcon, WarningIcon } from './icons';
-import { parseToPackageAndUnits, parseToTotalUnits } from '../utils/formatters';
+import { parseToPackageAndUnits, parseToTotalUnits, toEnglishDigits } from '../utils/formatters';
 import { useAppContext } from '../AppContext';
 
 
@@ -91,7 +91,7 @@ const FormInput: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label:
 );
 
 const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave }) => {
-    const { products } = useAppContext();
+    const { products, storeSettings } = useAppContext();
     const productToFormState = (p: Product | null): FormState => {
         const firstBatch = p?.batches[0];
         return {
@@ -130,7 +130,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
     const isNameDuplicate = useMemo(() => {
         const currentName = formData.name.trim();
         if (!currentName) return false;
-        // If editing, exclude current product from search
         return products.some(p => p.id !== product?.id && p.name.trim() === currentName);
     }, [formData.name, products, product]);
 
@@ -212,11 +211,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        let processedValue = value;
+        let processedValue = toEnglishDigits(value);
+        
         if (['itemsPerPackage', 'lotNumber'].includes(name)) {
-            processedValue = value.replace(/[^0-9]/g, '');
+            processedValue = processedValue.replace(/[^0-9]/g, '');
         } else if (['purchasePrice', 'salePrice', 'purchaseExchangeRate'].includes(name)) {
-            processedValue = value.replace(/[^0-9.]/g, '');
+            processedValue = processedValue.replace(/[^0-9.]/g, '');
             if ((processedValue.match(/\./g) || []).length > 1) return;
         }
 
@@ -260,8 +260,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
         e.preventDefault();
         if (validate()) {
             const exchangeRateValue = (purchaseCurrency === 'AFN' || product) ? 1 : Number(purchaseExchangeRate);
-            
-            // Phase 1: IRT uses Division
             const finalPurchasePriceAFN = purchaseCurrency === 'IRT' 
                 ? Number(formData.purchasePrice) / exchangeRateValue 
                 : Number(formData.purchasePrice) * exchangeRateValue;
@@ -430,8 +428,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <FormInput label="تعداد در بسته" id="itemsPerPackage" name="itemsPerPackage" type="text" inputMode="numeric" value={formData.itemsPerPackage} onChange={handleInputChange} placeholder="مثال: 12" onKeyDown={handleKeyDown} />
-                        <FormInput label="موجودی (بسته)" id="stockPackages" name="stockPackages" type="text" inputMode="numeric" value={stockPackages} onInput={(e: any) => { const v = e.target.value.replace(/[^0-9]/g, ''); setStockPackages(v); handleStockChange(v, stockUnits); }} disabled={Number(formData.itemsPerPackage) <= 1 || !!product} onKeyDown={handleKeyDown} error={errors.stock} />
-                        <FormInput label="موجودی (عدد)" id="stockUnits" name="stockUnits" type="text" inputMode="numeric" value={stockUnits} onInput={(e: any) => { const v = e.target.value.replace(/[^0-9]/g, ''); setStockUnits(v); handleStockChange(stockPackages, v); }} disabled={!!product} onKeyDown={handleKeyDown} />
+                        <FormInput label={`موجودی (${storeSettings.packageLabel || 'بسته'})`} id="stockPackages" name="stockPackages" type="text" inputMode="numeric" value={stockPackages} onInput={(e: any) => { const v = toEnglishDigits(e.target.value).replace(/[^0-9]/g, ''); setStockPackages(v); handleStockChange(v, stockUnits); }} disabled={Number(formData.itemsPerPackage) <= 1 || !!product} onKeyDown={handleKeyDown} error={errors.stock} />
+                        <FormInput label={`موجودی (${storeSettings.unitLabel || 'عدد'})`} id="stockUnits" name="stockUnits" type="text" inputMode="numeric" value={stockUnits} onInput={(e: any) => { const v = toEnglishDigits(e.target.value).replace(/[^0-9]/g, ''); setStockUnits(v); handleStockChange(stockPackages, v); }} disabled={!!product} onKeyDown={handleKeyDown} />
                     </div>
 
                     <div className="border-t border-slate-200 pt-4">

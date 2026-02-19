@@ -80,7 +80,7 @@ const ProductDetails: React.FC<{ product: Product }> = ({ product }) => {
         <div className="space-y-4">
             <DetailRow label="نام محصول" value={product.name} />
             <DetailRow label="قیمت فروش" value={formatCurrency(product.salePrice, storeSettings)} />
-            <DetailRow label="موجودی کل" value={formatStockToPackagesAndUnits(totalStock, product.itemsPerPackage)} />
+            <DetailRow label="موجودی کل" value={formatStockToPackagesAndUnits(totalStock, storeSettings, product.itemsPerPackage)} />
             <DetailRow label="شرکت سازنده" value={product.manufacturer || '-'} />
             <DetailRow label="بارکد" value={<span className="font-mono">{product.barcode || '-'}</span>} />
         </div>

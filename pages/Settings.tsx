@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useAppContext } from '../AppContext';
 import type { StoreSettings, Service, Role, User, Permission } from '../types';
-import { PlusIcon, TrashIcon, DownloadIcon, UploadIcon, UserGroupIcon, KeyIcon, WarningIcon, CheckIcon } from '../components/icons';
+import { PlusIcon, TrashIcon, DownloadIcon, UploadIcon, UserGroupIcon, KeyIcon, WarningIcon, CheckIcon, SettingsIcon } from '../components/icons';
 import Toast from '../components/Toast';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, toEnglishDigits } from '../utils/formatters';
 import { ALL_PERMISSIONS, groupPermissions } from '../utils/permissions';
 
 interface TabProps {
@@ -15,7 +15,11 @@ const StoreDetailsTab: React.FC<TabProps> = ({ showToast }) => {
     const [formData, setFormData] = useState(storeSettings);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        let value = e.target.value;
+        if (e.target.name === 'phone') {
+            value = toEnglishDigits(value);
+        }
+        setFormData({ ...formData, [e.target.name]: value });
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -55,18 +59,23 @@ const StoreDetailsTab: React.FC<TabProps> = ({ showToast }) => {
 const AlertsTab: React.FC<TabProps> = ({ showToast }) => {
     const { storeSettings, updateSettings } = useAppContext();
     const [formData, setFormData] = useState({
-        lowStockThreshold: storeSettings.lowStockThreshold,
-        expiryThresholdMonths: storeSettings.expiryThresholdMonths
+        lowStockThreshold: String(storeSettings.lowStockThreshold),
+        expiryThresholdMonths: String(storeSettings.expiryThresholdMonths)
     });
 
      const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: Number(value) }));
+        const englishValue = toEnglishDigits(value).replace(/[^0-9]/g, '');
+        setFormData(prev => ({ ...prev, [name]: englishValue }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        updateSettings({ ...storeSettings, ...formData });
+        updateSettings({ 
+            ...storeSettings, 
+            lowStockThreshold: Number(formData.lowStockThreshold) || 0,
+            expiryThresholdMonths: Number(formData.expiryThresholdMonths) || 0
+        });
         showToast("تنظیمات هشدارها با موفقیت بروزرسانی شد.");
     };
 
@@ -79,16 +88,69 @@ const AlertsTab: React.FC<TabProps> = ({ showToast }) => {
             <div className="space-y-6">
                 <div>
                     <label htmlFor="lowStockThreshold" className="block text-sm md:text-md font-bold text-slate-700 mb-2">آستانه کمبود موجودی</label>
-                    <input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all" />
+                    <input id="lowStockThreshold" name="lowStockThreshold" type="text" inputMode="numeric" value={formData.lowStockThreshold} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" />
                     <p className="text-xs text-slate-400 mt-2 font-medium">زمانی که موجودی یک کالا به این عدد یا کمتر برسد، هشدار داده خواهد شد.</p>
                 </div>
                 <div>
                     <label htmlFor="expiryThresholdMonths" className="block text-sm md:text-md font-bold text-slate-700 mb-2">بازه زمانی هشدار انقضا (به ماه)</label>
-                    <input id="expiryThresholdMonths" name="expiryThresholdMonths" type="number" value={formData.expiryThresholdMonths} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all" />
+                    <input id="expiryThresholdMonths" name="expiryThresholdMonths" type="text" inputMode="numeric" value={formData.expiryThresholdMonths} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" />
                     <p className="text-xs text-slate-400 mt-2 font-medium">محصولاتی که تاریخ انقضای آن‌ها کمتر از این تعداد ماه آینده باشد، در داشبورد نمایش داده خواهند شد.</p>
                 </div>
             </div>
             <div className="flex justify-end pt-4">
+                <button type="submit" className="w-full md:w-auto px-8 py-4 rounded-xl bg-blue-600 text-white font-black text-lg shadow-xl shadow-blue-100 btn-primary active:scale-[0.98]">ذخیره تغییرات</button>
+            </div>
+        </form>
+    );
+};
+
+const CustomizationTab: React.FC<TabProps> = ({ showToast }) => {
+    const { storeSettings, updateSettings } = useAppContext();
+    const [formData, setFormData] = useState({
+        packageLabel: storeSettings.packageLabel || 'بسته',
+        unitLabel: storeSettings.unitLabel || 'عدد'
+    });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        updateSettings({ ...storeSettings, ...formData });
+        showToast("شخصی‌سازی عناوین واحدها با موفقیت انجام شد.");
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
+            <h3 className="text-xl font-bold text-slate-800 border-b pb-3 mb-4 hidden md:block">شخصی‌سازی واحدها</h3>
+            <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 mb-6">
+                <p className="text-indigo-800 text-sm font-medium leading-relaxed italic">
+                    در این بخش می‌توانید نام‌های «بسته» و «عدد» را به عناوین دلخواه خود (مانند کارتن، جین، حلقه، جفت و ...) تغییر دهید تا در تمام بخش‌های سیستم نمایش داده شوند.
+                </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label htmlFor="packageLabel" className="block text-sm md:text-md font-bold text-slate-700 mb-2">نام واحد بزرگ (بسته/کارتن)</label>
+                    <input id="packageLabel" name="packageLabel" value={formData.packageLabel} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" placeholder="مثلاً: کارتن" />
+                </div>
+                <div>
+                    <label htmlFor="unitLabel" className="block text-sm md:text-md font-bold text-slate-700 mb-2">نام واحد کوچک (عدد/پک)</label>
+                    <input id="unitLabel" name="unitLabel" value={formData.unitLabel} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" placeholder="مثلاً: عدد" />
+                </div>
+            </div>
+            
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mt-8">
+                <h4 className="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">پیش‌نمایش در سیستم:</h4>
+                <div className="flex gap-4">
+                    <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
+                        <span className="text-[10px] text-slate-400 block font-bold">نمایش موجودی:</span>
+                        <span className="font-black text-slate-700">۱۰ {formData.packageLabel} و ۵ {formData.unitLabel}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end pt-6">
                 <button type="submit" className="w-full md:w-auto px-8 py-4 rounded-xl bg-blue-600 text-white font-black text-lg shadow-xl shadow-blue-100 btn-primary active:scale-[0.98]">ذخیره تغییرات</button>
             </div>
         </form>
@@ -120,7 +182,7 @@ const ServicesTab: React.FC<TabProps> = ({ showToast }) => {
                 <p className="text-xs font-black text-slate-500 mb-4 uppercase tracking-wider">افزودن خدمت جدید</p>
                 <div className="flex flex-col md:flex-row gap-3">
                     <input value={name} onChange={e => setName(e.target.value)} placeholder="نام خدمت (مثال: فتوکپی)" className="flex-grow p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all" />
-                    <input value={price} onChange={e => setPrice(e.target.value.replace(/[^0-9]/g, ''))} type="text" inputMode="numeric" placeholder={`قیمت (${storeSettings.currencyName})`} className="md:w-48 p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" />
+                    <input value={price} onChange={e => setPrice(toEnglishDigits(e.target.value).replace(/[^0-9]/g, ''))} type="text" inputMode="numeric" placeholder={`قیمت (${storeSettings.currencyName})`} className="md:w-48 p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" />
                     <button onClick={handleAddService} className="flex items-center justify-center bg-blue-600 text-white px-6 py-3.5 rounded-xl shadow-lg shadow-blue-100 btn-primary active:scale-[0.98]">
                         <PlusIcon className="w-5 h-5 ml-2" /> <span className="font-bold">افزودن</span>
                     </button>
@@ -482,6 +544,7 @@ const Settings: React.FC = () => {
     const tabs = [
         { id: 'storeDetails', label: 'فروشگاه', permission: 'settings:manage_store', icon: <UserGroupIcon className="w-5 h-5"/> },
         { id: 'alerts', label: 'هشدارها', permission: 'settings:manage_alerts', icon: <WarningIcon className="w-5 h-5"/> },
+        { id: 'customization', label: 'شخصی‌سازی', permission: 'settings:manage_store', icon: <SettingsIcon className="w-5 h-5"/> },
         { id: 'services', label: 'خدمات', permission: 'settings:manage_services', icon: <PlusIcon className="w-5 h-5"/> },
         { id: 'usersAndRoles', label: 'کاربران', permission: 'settings:manage_users', icon: <UserGroupIcon className="w-5 h-5"/> },
         { id: 'backup', label: 'پشتیبان‌گیری', permission: 'settings:manage_backup', icon: <UploadIcon className="w-5 h-5"/> },
@@ -493,6 +556,7 @@ const Settings: React.FC = () => {
         switch (activeTab) {
             case 'storeDetails': return <StoreDetailsTab showToast={showToast} />;
             case 'alerts': return <AlertsTab showToast={showToast} />;
+            case 'customization': return <CustomizationTab showToast={showToast} />;
             case 'services': return <ServicesTab showToast={showToast} />;
             case 'backup': return <BackupRestoreTab showToast={showToast} />;
             case 'usersAndRoles': return <UsersAndRolesTab showToast={showToast} />;

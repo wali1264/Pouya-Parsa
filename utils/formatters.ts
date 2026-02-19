@@ -1,19 +1,30 @@
 import type { PackageUnits, StoreSettings } from '../types';
 
-export const formatStockToPackagesAndUnits = (totalStock: number, itemsPerPackage?: number): string => {
+export const toEnglishDigits = (str: string): string => {
+    const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
+    const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+    return (str || "")
+        .replace(/[۰-۹]/g, (w) => persianDigits.indexOf(w).toString())
+        .replace(/[٠-٩]/g, (w) => arabicDigits.indexOf(w).toString());
+};
+
+export const formatStockToPackagesAndUnits = (totalStock: number, settings: StoreSettings, itemsPerPackage?: number): string => {
+    const pLabel = settings.packageLabel || 'بسته';
+    const uLabel = settings.unitLabel || 'عدد';
+
     if (!itemsPerPackage || itemsPerPackage <= 1) {
-        return totalStock.toLocaleString('fa-IR');
+        return `${(totalStock || 0).toLocaleString('fa-IR')} ${uLabel}`;
     }
     const packages = Math.floor(totalStock / itemsPerPackage);
     const units = totalStock % itemsPerPackage;
 
     if (packages > 0 && units > 0) {
-        return `${packages.toLocaleString('fa-IR')} بسته و ${units.toLocaleString('fa-IR')} عدد`;
+        return `${packages.toLocaleString('fa-IR')} ${pLabel} و ${units.toLocaleString('fa-IR')} ${uLabel}`;
     }
     if (packages > 0) {
-        return `${packages.toLocaleString('fa-IR')} بسته`;
+        return `${packages.toLocaleString('fa-IR')} ${pLabel}`;
     }
-    return `${units.toLocaleString('fa-IR')} عدد`;
+    return `${units.toLocaleString('fa-IR')} ${uLabel}`;
 };
 
 
@@ -23,7 +34,7 @@ export const parseToTotalUnits = (packages: number, units: number, itemsPerPacka
 
 export const parseToPackageAndUnits = (totalStock: number, itemsPerPackage: number): PackageUnits => {
     if (itemsPerPackage <= 1) {
-        return { packages: 0, units: totalStock };
+        return { packages: 0, units: totalStock || 0 };
     }
     const packages = Math.floor(totalStock / itemsPerPackage);
     const units = totalStock % itemsPerPackage;
@@ -31,9 +42,9 @@ export const parseToPackageAndUnits = (totalStock: number, itemsPerPackage: numb
 };
 
 export const formatCurrency = (amount: number, settings: StoreSettings, customCurrencyName?: string): string => {
-    // Use maximumFractionDigits to show decimals only if they exist (e.g., 12.5) and integers as normal (e.g., 100)
-    const formatted = amount.toLocaleString('fa-IR', { maximumFractionDigits: 3 });
-    const currency = customCurrencyName || settings.currencyName;
+    const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+    const formatted = safeAmount.toLocaleString('fa-IR', { maximumFractionDigits: 3 });
+    const currency = customCurrencyName || (settings && settings.currencyName) || 'AFN';
     return `${formatted} ${currency}`;
 };
 
@@ -46,7 +57,7 @@ export const numberToPersianWords = (num: number): string => {
     const hundreds = ['', 'یکصد', 'دویست', 'سیصد', 'چهارده', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
     const thousands = ['', 'هزار', 'میلیون', 'میلیارد', 'تریلیون'];
 
-    let numStr = String(Math.round(num));
+    let numStr = String(Math.round(num || 0));
     if (numStr.length > 15) return 'عدد بسیار بزرگ';
 
     const groups = [];
@@ -100,7 +111,7 @@ const wordToNumberMap: { [key: string]: number } = {
 };
 
 export const parseSpokenNumber = (transcript: string): string => {
-    let processedTranscript = transcript.replace(/[۰-۹]/g, d => persianDigitsMap[d]);
+    let processedTranscript = (transcript || "").replace(/[۰-۹]/g, d => persianDigitsMap[d]);
     const words = processedTranscript.toLowerCase().split(/\s+/);
     const numbers = words.map(word => wordToNumberMap[word] ?? parseInt(word.replace(/[^0-9.]/g, ''), 10)).filter(num => !isNaN(num));
     if (numbers.length > 0) {
