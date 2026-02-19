@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { SaleInvoice, StoreSettings, CartItem, InvoiceItem, Customer } from '../types';
 import { XIcon, EditIcon, CheckIcon } from './icons';
@@ -85,7 +86,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
         }
 
         return {
-            isService, itemsPerPack, pkgCount, unitCount, 
+            isService, itemsPerPackage: itemsPerPack, pkgCount, unitCount, 
             unitPrice: unitPriceDisplay,
             pkgPrice: unitPriceDisplay * itemsPerPack,
             totalPrice: unitPriceDisplay * totalQty
@@ -145,9 +146,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
                                             </td>
                                             <td className="p-1 print:p-2 text-center border border-slate-300 font-bold bg-blue-50/30">{details.pkgCount > 0 ? details.pkgCount.toLocaleString('fa-IR') : '-'}</td>
                                             <td className="p-1 print:p-2 text-center border border-slate-300 font-bold bg-blue-50/30">{details.unitCount > 0 ? details.unitCount.toLocaleString('fa-IR') : '-'}</td>
-                                            <td className="p-1 print:p-2 text-center border border-slate-300">{details.pkgCount > 0 ? Math.round(details.pkgPrice).toLocaleString('fa-IR') : '-'}</td>
-                                            <td className="p-1 print:p-2 text-center border border-slate-300">{details.unitCount > 0 ? Math.round(details.unitPrice).toLocaleString('fa-IR') : '-'}</td>
-                                            <td className="p-1 print:p-2 text-center border border-slate-300 font-bold text-slate-800">{Math.round(details.totalPrice).toLocaleString('fa-IR')}</td>
+                                            <td className="p-1 print:p-2 text-center border border-slate-300" dir="ltr">{details.pkgCount > 0 ? details.pkgPrice.toLocaleString('fa-IR', { maximumFractionDigits: 3 }) : '-'}</td>
+                                            <td className="p-1 print:p-2 text-center border border-slate-300" dir="ltr">{details.unitCount > 0 ? details.unitPrice.toLocaleString('fa-IR', { maximumFractionDigits: 3 }) : '-'}</td>
+                                            <td className="p-1 print:p-2 text-center border border-slate-300 font-bold text-slate-800" dir="ltr">{details.totalPrice.toLocaleString('fa-IR', { maximumFractionDigits: 3 })}</td>
                                         </tr>
                                     )
                                 })}
@@ -157,31 +158,18 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
 
                     <div className="mt-2 pt-2 print:mt-4 flex justify-between items-start">
                         <div className="w-1/2 space-y-1">
-                             {customer && (
-                                 <div className="p-2 border border-dashed border-slate-400 rounded-lg bg-slate-50/50">
-                                     <p className="text-[10px] font-black text-slate-500 mb-1">وضعیت کل حساب مشتری:</p>
-                                     <div className="grid grid-cols-2 gap-x-4 text-xs font-bold text-slate-700">
-                                         <span>مانده افغانی:</span> <span dir="ltr">{Math.round(customer.balanceAFN).toLocaleString()} AFN</span>
-                                         <span>مانده دلار:</span> <span dir="ltr">{customer.balanceUSD.toLocaleString()} $</span>
-                                         <span>مانده تومان:</span> <span dir="ltr">{customer.balanceIRT.toLocaleString()} T</span>
-                                         <div className="col-span-2 border-t mt-1 pt-1 flex justify-between font-black text-blue-800">
-                                             <span>تراز نهایی (AFN):</span>
-                                             <span dir="ltr">{Math.round(customer.balance).toLocaleString()}</span>
-                                         </div>
-                                     </div>
-                                 </div>
-                             )}
+                            {/* بخش وضعیت کل حساب مشتری طبق دستور حذف گردید تا در فاکتور چاپ نشود */}
                         </div>
                         <div className="w-1/2 text-left space-y-1 text-sm">
                             {invoice.totalDiscount > 0 && (
                                 <>
-                                    <div className="flex justify-between px-2"><span className="font-semibold text-slate-600">جمع کل:</span><span>{Math.round(invoice.subtotal).toLocaleString('fa-IR')} {currencySuffix}</span></div>
-                                    <div className="flex justify-between px-2 text-green-600"><span className="font-semibold">مجموع تخفیف:</span><span>{Math.round(invoice.totalDiscount).toLocaleString('fa-IR')} {currencySuffix}</span></div>
+                                    <div className="flex justify-between px-2"><span className="font-semibold text-slate-600">جمع کل:</span><span dir="ltr">{invoice.subtotal.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} {currencySuffix}</span></div>
+                                    <div className="flex justify-between px-2 text-green-600"><span className="font-semibold">مجموع تخفیف:</span><span dir="ltr">{invoice.totalDiscount.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} {currencySuffix}</span></div>
                                 </>
                             )}
                             <div className="flex justify-between text-xl font-bold border-t border-black pt-2 mt-2 px-2 bg-slate-100 rounded">
                                 <span>مبلغ نهایی ({invoice.currency}):</span>
-                                <span className="text-blue-700">{Math.round(invoice.totalAmount).toLocaleString('fa-IR')} {currencySuffix}</span>
+                                <span className="text-blue-700" dir="ltr">{invoice.totalAmount.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} {currencySuffix}</span>
                             </div>
                         </div>
                     </div>

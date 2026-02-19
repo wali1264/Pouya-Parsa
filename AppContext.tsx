@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import type {
     Product, ProductBatch, SaleInvoice, PurchaseInvoice, InTransitInvoice, PurchaseInvoiceItem, InvoiceItem,
@@ -484,14 +485,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return item;
         });
 
-        // 3. Financial Totals
-        const subtotal = cart.reduce((t, i) => {
+        // 3. Financial Totals (Corrected Logic)
+        const totalAFN = cart.reduce((t, i) => {
             const price = (i.type === 'product' && i.finalPrice !== undefined) ? i.finalPrice : (i.type === 'product' ? i.salePrice : i.price);
             return (price * i.quantity) + t;
         }, 0);
-        const totalAmountAFN = currency === 'AFN' ? subtotal : (currency === 'IRT' ? subtotal / exchangeRate : subtotal * exchangeRate);
+
+        // Transactional amount calculation based on the user's "red line" rules:
+        // Dollar = Afghani divided by rate | Toman = Afghani multiplied by rate
+        const totalTransactional = currency === 'AFN' ? totalAFN : 
+                                  (currency === 'IRT' ? totalAFN * exchangeRate : totalAFN / exchangeRate);
+
         const invId = editingSaleInvoiceId || generateNextId('F', saleInvoices.map(i => i.id));
-        const finalInv: SaleInvoice = { id: invId, type: 'sale', items: itemsWithBatches, subtotal, totalAmount: subtotal, totalAmountAFN, totalDiscount: 0, timestamp: new Date().toISOString(), cashier, customerId, currency, exchangeRate };
+        
+        const finalInv: SaleInvoice = { 
+            id: invId, 
+            type: 'sale', 
+            items: itemsWithBatches, 
+            subtotal: totalTransactional, 
+            totalAmount: totalTransactional, 
+            totalAmountAFN: totalAFN, 
+            totalDiscount: 0, 
+            timestamp: new Date().toISOString(), 
+            cashier, 
+            customerId, 
+            currency, 
+            exchangeRate 
+        };
 
         // 4. Atomic Balance Update
         const customerUpdates: {id: string, newBalances: {AFN: number, USD: number, IRT: number, Total: number}}[] = [];
@@ -509,7 +529,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
         }
 
-        // Apply New
+        // Apply New (Fixing the currency balance error)
         if (customerId) {
             const nc = customers.find(c => c.id === customerId);
             if (nc) {
@@ -519,10 +539,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 let balIRT = prevUpdate ? prevUpdate.newBalances.IRT : nc.balanceIRT;
                 let balTotal = prevUpdate ? prevUpdate.newBalances.Total : nc.balance;
 
-                if (currency === 'USD') balUSD += subtotal;
-                else if (currency === 'IRT') balIRT += subtotal;
-                else balAFN += subtotal;
-                balTotal += totalAmountAFN;
+                // FIX: Add the transactional amount to the specific currency wallet
+                if (currency === 'USD') balUSD += totalTransactional;
+                else if (currency === 'IRT') balIRT += totalTransactional;
+                else balAFN += totalTransactional;
+                
+                // The total balance is always trackable in AFN
+                balTotal += totalAFN;
 
                 const finalBal = { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal };
                 if (prevUpdate) prevUpdate.newBalances = finalBal;
@@ -530,7 +553,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
         }
 
-        const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: subtotal, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency };
+        const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: totalTransactional, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency };
 
         try {
             if (editingSaleInvoiceId) {
@@ -570,10 +593,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const itemPriceAFN = (originalItem.type === 'product' && originalItem.finalPrice !== undefined) ? originalItem.finalPrice : (originalItem.type === 'product' ? originalItem.salePrice : originalItem.price);
             const rate = originalInv.exchangeRate || 1;
             
-            returnTotalTransactional += (itemPriceAFN * ret.quantity);
-            const lineTotalAFN = originalInv.currency === 'AFN' ? (itemPriceAFN * ret.quantity) : 
-                               (originalInv.currency === 'IRT' ? (itemPriceAFN * ret.quantity) / rate : (itemPriceAFN * ret.quantity) * rate);
-            returnTotalAFN += lineTotalAFN;
+            // Re-calculate the transactional price for returning
+            let lineTotalTransactional = 0;
+            if (originalInv.currency === 'AFN') {
+                lineTotalTransactional = itemPriceAFN * ret.quantity;
+            } else if (originalInv.currency === 'IRT') {
+                lineTotalTransactional = (itemPriceAFN * rate) * ret.quantity;
+            } else {
+                lineTotalTransactional = (itemPriceAFN / rate) * ret.quantity;
+            }
+
+            returnTotalTransactional += lineTotalTransactional;
+            returnTotalAFN += (itemPriceAFN * ret.quantity);
 
             if (originalItem.type === 'product' && originalItem.batchDeductions) {
                 let remainingToRestore = ret.quantity;

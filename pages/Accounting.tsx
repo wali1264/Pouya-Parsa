@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../AppContext';
 import type { Supplier, Employee, Customer, Expense, AnyTransaction, CustomerTransaction, SupplierTransaction, PayrollTransaction } from '../types';
@@ -65,14 +66,21 @@ const SuppliersTab = () => {
 
     const handleOpenPayModal = (supplier: Supplier) => { setSelectedSupplier(supplier); setPaymentCurrency('AFN'); setExchangeRate(''); setPaymentAmount(''); setIsPayModalOpen(true); };
 
-    const handleAddPaymentForm = (e: React.FormEvent<HTMLDivElement> | React.FormEvent<HTMLFormElement>) => {
+    const handleAddPaymentForm = async (e: React.FormEvent<HTMLDivElement> | React.FormEvent<HTMLFormElement>) => {
         e.preventDefault(); if (!selectedSupplier) return;
         const amount = Number(paymentAmount);
         const description = (new FormData(e.currentTarget as HTMLFormElement)).get('description') as string || 'پرداخت وجه';
         if (!amount || amount <= 0) { showToast("مبلغ باید بزرگتر از صفر باشد."); return; }
         if (paymentCurrency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) { showToast("لطفاً نرخ ارز را وارد کنید."); return; }
-        const newTransaction = addSupplierPayment(selectedSupplier.id, amount, description, paymentCurrency, paymentCurrency === 'AFN' ? 1 : Number(exchangeRate));
-        if (newTransaction) { setIsPayModalOpen(false); setReceiptModalData({ person: selectedSupplier, transaction: newTransaction }); setSelectedSupplier(null); }
+        
+        // FIX: Must await the async call to ensure transaction object is returned, not a Promise
+        const newTransaction = await addSupplierPayment(selectedSupplier.id, amount, description, paymentCurrency, paymentCurrency === 'AFN' ? 1 : Number(exchangeRate));
+        
+        if (newTransaction) { 
+            setIsPayModalOpen(false); 
+            setReceiptModalData({ person: selectedSupplier, transaction: newTransaction }); 
+            setSelectedSupplier(null); 
+        }
     };
     
     const handleViewHistory = (supplier: Supplier) => { const transactions = supplierTransactions.filter(t => t.supplierId === supplier.id); setHistoryModalData({ person: supplier, transactions }); };
