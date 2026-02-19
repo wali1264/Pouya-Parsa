@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { InTransitInvoice, PurchaseInvoiceItem, Supplier, Product, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent, SupplierTransaction, PurchaseInvoice } from '../types';
 import { useAppContext } from '../AppContext';
@@ -354,14 +355,14 @@ const InTransit: React.FC = () => {
             <ConfirmModal isOpen={confirmConfig.isOpen} title={confirmConfig.title} message={confirmConfig.message} type={confirmConfig.type} onConfirm={confirmConfig.onConfirm} onCancel={() => setConfirmConfig(p => ({ ...p, isOpen: false }))} />
             {movementInvoice && <InTransitMovementModal invoice={movementInvoice} onClose={() => setMovementInvoice(null)} onConfirm={handleMovementConfirm} />}
             {paymentInvoice && <InTransitPaymentModal invoice={paymentInvoice} onClose={() => setPaymentInvoice(null)} onConfirm={async (a, c, r, d) => { const tx = await addInTransitPayment(paymentInvoice.id, a, d, c, r); if (tx) { showToast("پیش‌پرداخت ثبت شد."); const s = suppliers.find(x => x.id === paymentInvoice.supplierId); if (s) setReceiptModalData({ person: s, transaction: tx }); } setPaymentInvoice(null); }} />}
-            {receiptModalData && <ReceiptPreviewModal person={receiptModalData.person} transaction={receiptModalData.transaction} type="supplier" onClose={() => setReceiptModalData(null)} />}
+            {receiptModalData && <ReceiptPreviewModal person={receiptModalData.person} transaction={receiptModalData.transaction} type="customer" onClose={() => setReceiptModalData(null)} />}
 
             {viewInvoice && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[140] p-4 modal-animate">
                     <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
                         <div className="flex justify-between items-center pb-4 border-b">
                             <h2 className="text-xl font-black text-slate-800">جزئیات محموله {viewInvoice.invoiceNumber || viewInvoice.id.slice(0,8)}</h2>
-                            <button onClick={() => setViewInvoice(null)} className="p-1 rounded-full bg-slate-100 text-slate-400 hover:text-red-50 hover:text-red-500 transition-colors"><XIcon/></button>
+                            <button onClick={() => setViewInvoice(null)} className="p-1 rounded-full bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"><XIcon/></button>
                         </div>
                         <div className="flex-grow overflow-y-auto pt-6 space-y-6">
                             <div>
@@ -411,6 +412,9 @@ const InTransit: React.FC = () => {
                     const totalQty = invoice.items.reduce((s,i) => s + (i.atFactoryQty + i.inTransitQty + i.receivedQty), 0) || 1;
                     const receivedRatio = (invoice.items.reduce((s,i) => s + i.receivedQty, 0) / totalQty) * 100;
                     const isDelayed = activeTab === 'active' && invoice.expectedArrivalDate && new Date(invoice.expectedArrivalDate) < new Date();
+                    
+                    const isLockedForDeletion = invoice.items.some(it => it.receivedQty > 0) || 
+                                                 purchaseInvoices.some(p => p.sourceInTransitId === invoice.id);
 
                     return (
                         <div key={invoice.id} className={`bg-white/80 backdrop-blur-xl p-6 rounded-3xl border-2 transition-all duration-300 relative group overflow-hidden ${isDelayed ? 'border-red-200 shadow-red-50' : 'border-transparent hover:border-blue-200 shadow-md hover:shadow-xl'}`}>
@@ -457,7 +461,18 @@ const InTransit: React.FC = () => {
                                     <div className="flex-1 py-2 text-center text-[10px] font-black text-slate-400 bg-slate-100 rounded-xl uppercase tracking-widest border border-slate-200">این پرونده مختومه شده است</div>
                                 )}
                                 <button onClick={() => setPaymentInvoice(invoice)} className="p-3 bg-slate-100 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all" title="ثبت پرداختی"><PlusIcon className="w-5 h-5"/></button>
-                                <button onClick={() => handleDeleteClick(invoice.id)} className="p-3 bg-slate-100 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><TrashIcon className="w-5 h-5"/></button>
+                                <button 
+                                    onClick={() => handleDeleteClick(invoice.id)} 
+                                    disabled={isLockedForDeletion}
+                                    className={`p-3 rounded-xl transition-all ${
+                                        isLockedForDeletion 
+                                            ? 'bg-slate-50 text-slate-200 cursor-not-allowed' 
+                                            : 'bg-slate-100 text-slate-400 hover:text-red-600 hover:bg-red-50'
+                                    }`}
+                                    title={isLockedForDeletion ? "به دلیل وصول بخشی از کالاها، حذف این محموله جهت حفظ یکپارچگی حسابداری امکان‌پذیر نیست" : "حذف محموله"}
+                                >
+                                    <TrashIcon className="w-5 h-5"/>
+                                </button>
                             </div>
                         </div>
                     );

@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../AppContext';
 import DateRangeFilter from '../components/DateRangeFilter';
 import { formatCurrency } from '../utils/formatters';
-import type { Product, SaleInvoice, User, Customer, Supplier, CustomerTransaction, SupplierTransaction, InTransitInvoice } from '../types';
+import type { Product, SaleInvoice, User, Customer, Supplier, CustomerTransaction, SupplierTransaction, InTransitInvoice, Expense } from '../types';
 import TransactionHistoryModal from '../components/TransactionHistoryModal';
 import { PrintIcon, WarningIcon, UserGroupIcon, InventoryIcon, AccountingIcon, POSIcon, ReportsIcon, DashboardIcon, TruckIcon, SafeIcon } from '../components/icons';
 import ReportPrintPreviewModal from '../components/ReportPrintPreviewModal';
@@ -50,13 +51,13 @@ const Reports: React.FC = () => {
         });
 
         const netSales = grossRevenueAFN - returnsAmountAFN;
-        const totalExpenses = expenses.filter(exp => {
+        const totalExpensesInRange = expenses.filter(exp => {
             const expTime = new Date(exp.date).getTime();
             return expTime >= dateRange.start.getTime() && expTime <= dateRange.end.getTime();
         }).reduce((sum, exp) => sum + exp.amount, 0);
 
         const grossProfit = netSales - totalCOGS;
-        const netIncome = grossProfit - totalExpenses;
+        const netIncome = grossProfit - totalExpensesInRange;
 
         const topProducts = filteredInvoices
             .flatMap(inv => inv.items)
@@ -70,7 +71,7 @@ const Reports: React.FC = () => {
             }, [] as { id: string, name: string, quantity: number, totalValue: number }[])
             .sort((a, b) => b.totalValue - a.totalValue).slice(0, 10);
 
-        return { netSales, totalDiscountsGiven: totalDiscountsGivenAFN, totalExpenses, netIncome, topProducts, returnsAmount: returnsAmountAFN, totalCOGS };
+        return { netSales, totalDiscountsGiven: totalDiscountsGivenAFN, totalExpenses: totalExpensesInRange, netIncome, topProducts, returnsAmount: returnsAmountAFN, totalCOGS };
     }, [saleInvoices, expenses, dateRange]);
 
     const inventoryData = useMemo(() => {
@@ -116,15 +117,25 @@ const Reports: React.FC = () => {
         const custRec = customers.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
         const suppPay = suppliers.reduce((sum, s) => sum + (s.balance > 0 ? s.balance : 0), 0);
         const deferredAssets = supplyChainData.totalValueAFN;
+        const netDepositPosition = depositHolders.reduce((s, h) => s + h.balanceAFN, 0);
+        
+        const totalHistoricalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+        
+        // Revised Capital Formula: Physical Assets - (Debts + Expenses + Net Money Owed to Depositors)
+        // If netDepositPosition is negative, it means people owe us money (Asset), so it effectively adds to netCapital.
+        // If positive, it means we owe money (Liability), so it reduces netCapital.
+        const netWorthRaw = (invVal + custRec + deferredAssets) - (suppPay + totalHistoricalExpenses + netDepositPosition);
+
         return { 
             inventoryValue: invVal, 
             customerReceivables: custRec, 
             supplierPayables: suppPay, 
             deferredAssets,
             totalAssets: invVal + custRec + deferredAssets, 
-            netCapital: (invVal + custRec + deferredAssets) - suppPay 
+            netCapital: netWorthRaw,
+            netDepositPosition
         };
-    }, [inventoryData, customers, suppliers, supplyChainData]);
+    }, [inventoryData, customers, suppliers, supplyChainData, expenses, depositHolders]);
 
     const collectionsData = useMemo(() => {
         const filtered = customerTransactions.filter(t => {
@@ -134,7 +145,7 @@ const Reports: React.FC = () => {
         return { 
             totalAFN: filtered.reduce((s, t) => {
                 const rate = (t as any).exchangeRate || 1;
-                return s + (t.amount * rate);
+                return s + (t.amount * ( (t as any).currency === 'USD' ? rate : 1));
             }, 0), 
             count: filtered.length,
             details: filtered.map(t => ({ ...t, customerName: customers.find(c => c.id === t.customerId)?.name || 'ناشناس' }))
@@ -164,11 +175,10 @@ const Reports: React.FC = () => {
             case 'sales': 
                 return (
                     <div className="space-y-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <SmartStatCard title="فروش خالص (AFN)" value={formatCurrency(salesData.netSales, storeSettings)} color="text-blue-600" icon={<POSIcon/>}/>
                             <SmartStatCard title="سود خالص (AFN)" value={formatCurrency(salesData.netIncome, storeSettings)} color="text-green-600" icon={<DashboardIcon/>}/>
                             <SmartStatCard title="هزینه‌ها" value={formatCurrency(salesData.totalExpenses, storeSettings)} color="text-red-500" icon={<WarningIcon/>}/>
-                            <SmartStatCard title="تخفیف‌ها (AFN)" value={formatCurrency(salesData.totalDiscountsGiven, storeSettings)} color="text-amber-600" icon={<PrintIcon/>}/>
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div className="p-5 bg-white rounded-2xl border border-slate-100 shadow-sm">
@@ -279,18 +289,27 @@ const Reports: React.FC = () => {
                                 <SmartStatCard title="موجودی انبار (AFN)" value={formatCurrency(financialPositionData.inventoryValue, storeSettings)} color="text-slate-800" />
                                 <SmartStatCard title="طلب از مشتریان (AFN)" value={formatCurrency(financialPositionData.customerReceivables, storeSettings)} color="text-slate-800" />
                                 <SmartStatCard title="کالای نرسیده (Deferred)" value={formatCurrency(financialPositionData.deferredAssets, storeSettings)} color="text-blue-600" />
+                                {financialPositionData.netDepositPosition < 0 && (
+                                    <SmartStatCard title="طلب از واسط‌ها (امانات)" value={formatCurrency(Math.abs(financialPositionData.netDepositPosition), storeSettings)} color="text-indigo-600" />
+                                )}
                             </div>
                             <div className="space-y-4">
                                 <h3 className="font-black text-red-700 flex items-center gap-2 px-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> بدهی‌ها</h3>
                                 <SmartStatCard title="بدهی به تأمین‌کننده (AFN)" value={formatCurrency(financialPositionData.supplierPayables, storeSettings)} color="text-red-600" />
-                                <SmartStatCard title="موجودی امانی (بدهی جاری)" value={formatCurrency(depositData.totalAFN, storeSettings)} color="text-indigo-600" />
+                                {financialPositionData.netDepositPosition > 0 && (
+                                    <SmartStatCard title="موجودی امانی (بدهی جاری)" value={formatCurrency(financialPositionData.netDepositPosition, storeSettings)} color="text-indigo-600" />
+                                )}
+                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">کل هزینه‌های انجام شده (از ابتدای کار)</p>
+                                    <p className="font-black text-slate-700 text-lg" dir="ltr">{formatCurrency(expenses.reduce((s,e)=>s+e.amount, 0), storeSettings)}</p>
+                                </div>
                             </div>
                             <div className="flex flex-col justify-center">
                                 <div className="bg-gradient-to-br from-blue-600 to-indigo-800 p-8 rounded-3xl shadow-xl text-white text-center transform transition-transform hover:scale-[1.02]">
                                     <h4 className="text-blue-100 font-bold mb-4 opacity-80 uppercase tracking-widest text-xs">سرمایه خالص (Net Worth)</h4>
-                                    <p className="text-3xl md:text-4xl font-black drop-shadow-md mb-2" dir="ltr">{formatCurrency(financialPositionData.netCapital - depositData.totalAFN, storeSettings)}</p>
+                                    <p className="text-3xl md:text-4xl font-black drop-shadow-md mb-2" dir="ltr">{formatCurrency(financialPositionData.netCapital, storeSettings)}</p>
                                     <div className="w-12 h-1 bg-white/30 mx-auto rounded-full mt-4 mb-2"></div>
-                                    <p className="text-[10px] text-blue-200 font-medium">دارایی‌های واقعی فروشگاه (بدون مبالغ امانی)</p>
+                                    <p className="text-[10px] text-blue-200 font-medium">ارزش واقعی کسب‌و‌کار با احتساب تمام تعهدات</p>
                                 </div>
                             </div>
                         </div>
@@ -380,7 +399,7 @@ const Reports: React.FC = () => {
                                 className={`flex items-center gap-2 py-3.5 px-6 font-black text-sm md:text-lg rounded-2xl transition-all duration-300 snap-start ${
                                     activeTab === tab.id
                                         ? 'bg-blue-600 shadow-xl shadow-blue-200 text-white translate-y-[-2px]'
-                                        : 'text-slate-500 hover:bg-white hover:text-blue-600'
+                                        : 'text-slate-500 hover:bg-white/80 hover:text-blue-600'
                                 }`}
                             >
                                 {tab.icon}

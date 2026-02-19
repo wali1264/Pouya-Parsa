@@ -82,7 +82,7 @@ interface AppContextType extends AppState {
     
     addCustomer: (customer: Omit<Customer, 'id' | 'balance' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT'>, initialBalance?: { amount: number, type: 'creditor' | 'debtor', currency: 'AFN' | 'USD' | 'IRT', exchangeRate?: number }) => void;
     deleteCustomer: (id: string) => void;
-    addCustomerPayment: (customerId: string, amount: number, description: string, currency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number) => CustomerTransaction;
+    addCustomerPayment: (customerId: string, amount: number, description: string, currency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number, trusteeId?: string) => Promise<CustomerTransaction | null>;
     
     addEmployee: (employee: Omit<Employee, 'id'|'balance'>) => void;
     addEmployeeAdvance: (employeeId: string, amount: number, description: string) => void;
@@ -982,21 +982,68 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     };
     const deleteCustomer = (id: string) => { api.deleteCustomer(id).then(() => fetchData(true)); };
-    const addCustomerPayment = (cid: string, a: number, d: string, cur: any = 'AFN', rate: number = 1) => {
+    const addCustomerPayment = async (cid: string, a: number, d: string, cur: any = 'AFN', rate: number = 1, trusteeId?: string) => {
         const c = state.customers.find(x => x.id === cid);
-        const afnAmount = cur === 'IRT' ? a / rate : a * rate;
-        const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: cid, type: 'payment', amount: a, date: new Date().toISOString(), description: d, currency: cur };
-        const newB = { AFN: c!.balanceAFN - (cur==='AFN'?a:0), USD: c!.balanceUSD - (cur==='USD'?a:0), IRT: c!.balanceIRT - (cur==='IRT'?a:0), Total: c!.balance - afnAmount };
-        api.processPayment('customer', cid, newB, tx).then(() => fetchData(true));
+        if (!c) return null;
+        
+        const afnAmount = cur === 'IRT' ? a / rate : a * (cur === 'USD' ? rate : 1);
+        const tx: CustomerTransaction = { 
+            id: crypto.randomUUID(), 
+            customerId: cid, 
+            type: 'payment', 
+            amount: a, 
+            date: new Date().toISOString(), 
+            description: d + (trusteeId ? ' (تحویل به واسطه)' : ''), 
+            currency: cur 
+        };
+        
+        const newB = { 
+            AFN: c.balanceAFN - (cur === 'AFN' ? a : 0), 
+            USD: c.balanceUSD - (cur === 'USD' ? a : 0), 
+            IRT: c.balanceIRT - (cur === 'IRT' ? a : 0), 
+            Total: c.balance - afnAmount 
+        };
+
+        await api.processPayment('customer', cid, newB, tx);
+        
+        if (trusteeId) {
+            await processDepositTransaction(
+                trusteeId, 
+                'withdrawal', 
+                a, 
+                cur, 
+                `دریافتی از مشتری: ${c.name} - بابت: ${d}`
+            );
+        }
+
+        await fetchData(true);
         return tx;
     };
 
     const addEmployee = (e: any) => { api.addEmployee(e).then(() => fetchData(true)); };
-    const addEmployeeAdvance = (eid: string, a: number, d: string) => {
+
+    // FIX: Optimized and connected to Expenses for Reports/Capital integration
+    const addEmployeeAdvance = async (eid: string, a: number, d: string) => {
         const emp = state.employees.find(x => x.id === eid);
-        const tx: PayrollTransaction = { id: crypto.randomUUID(), employeeId: eid, type: 'advance', amount: a, date: new Date().toISOString(), description: d };
-        api.processPayment('employee', eid, emp!.balance + a, tx).then(() => fetchData(true));
+        if (!emp) return;
+        const now = new Date().toISOString();
+        const tx: PayrollTransaction = { id: crypto.randomUUID(), employeeId: eid, type: 'advance', amount: a, date: now, description: d };
+        
+        // Auto-log to Expenses to ensure reports are accurate
+        const expense: Expense = { 
+            id: crypto.randomUUID(), 
+            category: 'salary', 
+            amount: a, 
+            description: `مساعده/تسویه میان‌دوره به ${emp.name}: ${d}`, 
+            date: now 
+        };
+
+        await api.processPayment('employee', eid, emp.balance + a, tx);
+        await api.addExpense(expense);
+        await fetchData(true);
+        logActivity('payroll', `ثبت مساعده/تسویه برای ${emp.name}: ${a.toLocaleString()} AFN`);
     };
+
     const processAndPaySalaries = () => {
         const txs: PayrollTransaction[] = [];
         const updates = state.employees.map(e => {
@@ -1005,10 +1052,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return { id: e.id, balance: 0 as const };
         });
         const totalPaid = txs.reduce((s,t) => s+t.amount, 0);
-        const expense: Expense = { id: crypto.randomUUID(), category: 'salary', amount: totalPaid, description: 'پرداخت حقوق کارکنان', date: new Date().toISOString() };
+        const expense: Expense = { id: crypto.randomUUID(), category: 'salary', amount: totalPaid, description: 'پرداخت حقوق کارکنان (تسویه نهایی)', date: new Date().toISOString() };
         api.processPayroll(updates, txs, expense).then(() => fetchData(true));
         return { success: true, message: 'حقوق تمام کارکنان تسویه و در مصارف ثبت شد.' };
     };
+
     const addExpense = (e: any) => { api.addExpense(e).then(() => fetchData(true)); };
     const addDepositHolder = async (h: any) => { await api.addDepositHolder(h); await fetchData(true); };
     const deleteDepositHolder = async (id: string) => { await api.deleteDepositHolder(id); await fetchData(true); };

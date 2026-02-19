@@ -1,25 +1,27 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAppContext } from '../AppContext';
-import type { Supplier, Employee, Customer, Expense, AnyTransaction, CustomerTransaction, SupplierTransaction, PayrollTransaction } from '../types';
-import { PlusIcon, XIcon, EyeIcon, TrashIcon, UserGroupIcon, AccountingIcon, TruckIcon } from '../components/icons';
+import type { Supplier, Employee, Customer, Expense, AnyTransaction, CustomerTransaction, SupplierTransaction, PayrollTransaction, DepositHolder } from '../types';
+import { PlusIcon, XIcon, EyeIcon, TrashIcon, UserGroupIcon, AccountingIcon, TruckIcon, ChevronDownIcon, CheckIcon } from '../components/icons';
 import Toast from '../components/Toast';
 import { formatCurrency, toEnglishDigits } from '../utils/formatters';
 import TransactionHistoryModal from '../components/TransactionHistoryModal';
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 
-const Modal: React.FC<{ title: string, onClose: () => void, children: React.ReactNode }> = ({ title, onClose, children }) => (
+const Modal: React.FC<{ title: string, onClose: () => void, children: React.ReactNode, headerAction?: React.ReactNode }> = ({ title, onClose, children, headerAction }) => (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[100] p-4 pt-12 md:pt-20 overflow-y-auto modal-animate">
         <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg overflow-hidden my-0">
             <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50 sticky top-0 z-10">
                 <h2 className="text-xl font-bold text-slate-800">{title}</h2>
-                <button onClick={onClose} className="p-1 rounded-full text-slate-500 hover:bg-red-100 hover:text-red-600 transition-colors"><XIcon className="w-6 h-6" /></button>
+                <div className="flex items-center gap-2">
+                    {headerAction}
+                    <button onClick={onClose} className="p-1 rounded-full text-slate-500 hover:bg-red-100 hover:text-red-600 transition-colors"><XIcon className="w-6 h-6" /></button>
+                </div>
             </div>
             <div className="p-6 bg-white">{children}</div>
         </div>
     </div>
 );
-
 
 const SuppliersTab = () => {
     const { suppliers, addSupplier, deleteSupplier, addSupplierPayment, supplierTransactions, storeSettings, inTransitInvoices } = useAppContext();
@@ -40,7 +42,6 @@ const SuppliersTab = () => {
 
     const showToast = (message: string) => { setToast(message); setTimeout(() => setToast(''), 3000); };
 
-    // Phase 2: Logistics Prepayments Calculation
     const logisticsCapital = useMemo(() => {
         return inTransitInvoices.filter(inv => inv.status !== 'closed').reduce((sum, inv) => {
             const rate = inv.exchangeRate || 1;
@@ -73,7 +74,6 @@ const SuppliersTab = () => {
         if (!amount || amount <= 0) { showToast("مبلغ باید بزرگتر از صفر باشد."); return; }
         if (paymentCurrency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) { showToast("لطفاً نرخ ارز را وارد کنید."); return; }
         
-        // FIX: Must await the async call to ensure transaction object is returned, not a Promise
         const newTransaction = await addSupplierPayment(selectedSupplier.id, amount, description, paymentCurrency, paymentCurrency === 'AFN' ? 1 : Number(exchangeRate));
         
         if (newTransaction) { 
@@ -92,8 +92,6 @@ const SuppliersTab = () => {
     return (
         <div>
             {toast && <Toast message={toast} onClose={() => setToast('')} />}
-            
-            {/* Phase 2: Logistics Summary Widget */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between">
                     <div>
@@ -219,7 +217,6 @@ const PayrollTab = () => {
     const [toast, setToast] = useState('');
     const [historyModalData, setHistoryModalData] = useState<{ person: Employee, transactions: PayrollTransaction[] } | null>(null);
 
-
     const showToast = (message: string) => { setToast(message); setTimeout(() => setToast(''), 3000); };
     
     const handleAddEmployeeForm = (e: React.FormEvent<HTMLFormElement>) => {
@@ -269,7 +266,6 @@ const PayrollTab = () => {
                 </button>
             </div>
 
-            {/* Desktop Table */}
             <div className="hidden md:block overflow-hidden rounded-2xl border border-gray-200 shadow-lg bg-white/40">
                 <table className="min-w-full text-center table-zebra">
                     <thead className="bg-slate-50">
@@ -305,7 +301,6 @@ const PayrollTab = () => {
                 </table>
             </div>
 
-            {/* Mobile Card View */}
             <div className="md:hidden space-y-4">
                 {employees.map(e => (
                     <div key={e.id} className="bg-white/80 p-5 rounded-2xl shadow-md border border-slate-100">
@@ -367,7 +362,7 @@ const PayrollTab = () => {
 };
 
 const CustomersTab = () => {
-    const { customers, addCustomer, deleteCustomer, addCustomerPayment, customerTransactions, storeSettings } = useAppContext();
+    const { customers, depositHolders, addCustomer, deleteCustomer, addCustomerPayment, customerTransactions, storeSettings } = useAppContext();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -384,8 +379,21 @@ const CustomersTab = () => {
     const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
     const [exchangeRate, setExchangeRate] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
+    const [selectedTrusteeId, setSelectedTrusteeId] = useState<string>('');
+    const [isTrusteeMenuOpen, setIsTrusteeMenuOpen] = useState(false);
+    const trusteeMenuRef = useRef<HTMLDivElement>(null);
 
     const showToast = (message: string) => { setToast(message); setTimeout(() => setToast(''), 3000); };
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (trusteeMenuRef.current && !trusteeMenuRef.current.contains(e.target as Node)) {
+                setIsTrusteeMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const handleAddCustomerForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -429,10 +437,11 @@ const CustomersTab = () => {
         setPaymentCurrency('AFN');
         setExchangeRate('');
         setPaymentAmount('');
+        setSelectedTrusteeId('');
         setIsPayModalOpen(true);
     };
 
-    const handleAddPaymentForm = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleAddPaymentForm = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!selectedCustomer) return;
         
@@ -450,18 +459,20 @@ const CustomersTab = () => {
             return;
         }
 
-        const newTransaction = addCustomerPayment(
+        const newTransaction = await addCustomerPayment(
             selectedCustomer.id, 
             amount, 
             description, 
             paymentCurrency, 
-            paymentCurrency === 'AFN' ? 1 : Number(exchangeRate)
+            paymentCurrency === 'AFN' ? 1 : Number(exchangeRate),
+            selectedTrusteeId || undefined
         );
         
         if (newTransaction) {
             setIsPayModalOpen(false);
             setReceiptModalData({ person: selectedCustomer, transaction: newTransaction });
             setSelectedCustomer(null);
+            setSelectedTrusteeId('');
         }
     };
 
@@ -493,6 +504,7 @@ const CustomersTab = () => {
             : Number(paymentAmount) * Number(exchangeRate);
     }, [paymentAmount, exchangeRate, paymentCurrency]);
 
+    const selectedTrustee = useMemo(() => depositHolders.find(h => h.id === selectedTrusteeId), [depositHolders, selectedTrusteeId]);
 
     return (
         <div>
@@ -542,7 +554,6 @@ const CustomersTab = () => {
                 </table>
             </div>
 
-             {/* Mobile Card View */}
             <div className="md:hidden space-y-4">
                 {customers.map(c => (
                      <div key={c.id} className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl shadow-md border border-slate-100 active:scale-[0.98] transition-all">
@@ -580,10 +591,8 @@ const CustomersTab = () => {
                     <form onSubmit={handleAddCustomerForm} className="space-y-4">
                         <input name="name" placeholder="نام مشتری" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" required/>
                         <input name="phone" placeholder="شماره تلفن" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" />
-                        
                         <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 space-y-4">
                             <p className="text-sm font-black text-blue-800">تراز اول دوره (اختیاری)</p>
-                            
                             <div className="flex gap-4">
                                 <label className="flex items-center gap-2 cursor-pointer group">
                                     <input type="radio" checked={addCustomerCurrency === 'AFN'} onChange={() => {setAddCustomerCurrency('AFN'); setAddCustomerRate('');}} className="text-blue-600" />
@@ -598,21 +607,12 @@ const CustomersTab = () => {
                                     <span className="text-sm font-bold text-slate-700">تومان</span>
                                 </label>
                             </div>
-
                             {addCustomerCurrency !== 'AFN' && (
                                 <div className="flex items-center gap-3">
                                     <span className="text-xs font-bold text-slate-400">نرخ {addCustomerCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
-                                    <input 
-                                        type="text" 
-                                        inputMode="decimal"
-                                        value={addCustomerRate} 
-                                        onChange={e => setAddCustomerRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
-                                        placeholder="نرخ" 
-                                        className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" 
-                                    />
+                                    <input type="text" inputMode="decimal" value={addCustomerRate} onChange={e => setAddCustomerRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" />
                                 </div>
                             )}
-
                             <div className="flex gap-2">
                                 <input name="initialBalance" type="text" inputMode="decimal" value={addCustomerAmount} onChange={e => setAddCustomerAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ (${addCustomerCurrency})`} className="w-2/3 p-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 font-bold" />
                                 <select name="balanceType" className="w-1/3 p-2.5 border border-slate-200 rounded-xl bg-white text-xs font-black">
@@ -620,19 +620,71 @@ const CustomersTab = () => {
                                     <option value="creditor">بستانکار است</option>
                                 </select>
                             </div>
-
                             {addCustomerCurrency !== 'AFN' && convertedInitialBalance > 0 && (
                                 <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} AFN</p>
                             )}
                         </div>
-
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg">ذخیره مشتری</button>
                     </form>
                 </Modal>
             )}
-             {isPayModalOpen && selectedCustomer && (
-                 <Modal title={`دریافت وجه از: ${selectedCustomer.name}`} onClose={() => setIsPayModalOpen(false)}>
+
+            {isPayModalOpen && selectedCustomer && (
+                 <Modal 
+                    title={`دریافت وجه از: ${selectedCustomer.name}`} 
+                    onClose={() => setIsPayModalOpen(false)}
+                    headerAction={
+                        <div className="relative" ref={trusteeMenuRef}>
+                            <button 
+                                onClick={() => setIsTrusteeMenuOpen(!isTrusteeMenuOpen)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all ${selectedTrusteeId ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                                title="انتخاب واسط (امانت‌گذار)"
+                            >
+                                <UserGroupIcon className="w-5 h-5" />
+                                <span className="text-[10px] font-black hidden sm:inline">{selectedTrustee ? selectedTrustee.name : 'انتخاب واسط'}</span>
+                                <ChevronDownIcon className={`w-4 h-4 transition-transform ${isTrusteeMenuOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {isTrusteeMenuOpen && (
+                                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-[110] modal-animate overflow-hidden">
+                                    <div className="text-[10px] font-black text-slate-400 p-2 border-b mb-1 uppercase tracking-widest">امانت‌گذاران (واسط)</div>
+                                    <div className="max-h-60 overflow-y-auto no-scrollbar">
+                                        <button 
+                                            onClick={() => { setSelectedTrusteeId(''); setIsTrusteeMenuOpen(false); }}
+                                            className={`w-full text-right p-3 rounded-xl flex justify-between items-center mb-1 transition-colors ${selectedTrusteeId === '' ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                                        >
+                                            <span className="text-xs font-bold">بدون واسط (نقدی مستقیم)</span>
+                                            {selectedTrusteeId === '' && <CheckIcon className="w-4 h-4" />}
+                                        </button>
+                                        {depositHolders.map(holder => (
+                                            <button 
+                                                key={holder.id}
+                                                onClick={() => { setSelectedTrusteeId(holder.id); setIsTrusteeMenuOpen(false); }}
+                                                className={`w-full text-right p-3 rounded-xl flex justify-between items-center mb-1 transition-colors ${selectedTrusteeId === holder.id ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-600'}`}
+                                            >
+                                                <div>
+                                                    <p className="text-xs font-black">{holder.name}</p>
+                                                    <p className="text-[9px] opacity-60">تراز: {Math.round(holder.balanceAFN).toLocaleString()} AFN</p>
+                                                </div>
+                                                {selectedTrusteeId === holder.id && <CheckIcon className="w-4 h-4" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    }
+                >
                     <form onSubmit={handleAddPaymentForm} className="space-y-4">
+                        {selectedTrustee && (
+                            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3 animate-fade-in">
+                                <div className="p-2 bg-indigo-600 text-white rounded-lg"><CheckIcon className="w-4 h-4"/></div>
+                                <div>
+                                    <p className="text-[10px] font-black text-indigo-800">تحویل به واسط: <span className="text-sm">{selectedTrustee.name}</span></p>
+                                    <p className="text-[9px] text-indigo-400 font-bold">مبلغ به حساب امانی این شخص منتقل می‌شود.</p>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex gap-4 p-3 bg-blue-50 rounded-xl">
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input type="radio" checked={paymentCurrency === 'AFN'} onChange={() => {setPaymentCurrency('AFN'); setExchangeRate('');}} className="text-blue-600" />
@@ -650,43 +702,23 @@ const CustomersTab = () => {
                         {paymentCurrency !== 'AFN' && (
                              <div className="flex items-center gap-3">
                                 <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ {paymentCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
-                                <input 
-                                    type="text" 
-                                    inputMode="decimal"
-                                    value={exchangeRate} 
-                                    onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
-                                    placeholder="نرخ" 
-                                    className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" 
-                                />
+                                <input type="text" inputMode="decimal" value={exchangeRate} onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" />
                             </div>
                         )}
                         <input name="amount" type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ دریافتی (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-emerald-50 font-black text-xl text-center" required />
-                        
                         {paymentCurrency !== 'AFN' && convertedPayment > 0 && (
                             <p className="text-[10px] font-black text-emerald-600 text-left">معادل دریافتی: {Math.round(convertedPayment).toLocaleString()} AFN</p>
                         )}
-                        
                         <input name="description" placeholder="بابت... (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl shadow-emerald-100 font-black text-lg active:scale-[0.98]">ثبت نهایی و چاپ رسید</button>
                     </form>
                 </Modal>
             )}
             {historyModalData && (
-                <TransactionHistoryModal 
-                    person={historyModalData.person}
-                    transactions={historyModalData.transactions}
-                    type="customer"
-                    onClose={() => setHistoryModalData(null)}
-                    onReprint={handleReprint}
-                />
+                <TransactionHistoryModal person={historyModalData.person} transactions={historyModalData.transactions} type="customer" onClose={() => setHistoryModalData(null)} onReprint={handleReprint} />
             )}
             {receiptModalData && (
-                <ReceiptPreviewModal
-                    person={receiptModalData.person}
-                    transaction={receiptModalData.transaction}
-                    type="customer"
-                    onClose={() => setReceiptModalData(null)}
-                />
+                <ReceiptPreviewModal person={receiptModalData.person} transaction={receiptModalData.transaction} type="customer" onClose={() => setReceiptModalData(null)} />
             )}
         </div>
     );
@@ -737,7 +769,6 @@ const ExpensesTab = () => {
                     </tbody>
                 </table>
             </div>
-            {/* Mobile Card View */}
             <div className="md:hidden space-y-4">
                 {expenses.map(e => (
                     <div key={e.id} className="bg-white/80 p-5 rounded-2xl shadow-md border border-slate-100 flex justify-between items-center">
@@ -790,7 +821,6 @@ const Accounting: React.FC = () => {
     
     const accessibleTabs = tabs.filter(tab => hasPermission(tab.permission));
     
-    // Set active tab to the first accessible one if current is not accessible
     if (!accessibleTabs.find(t => t.id === activeTab)) {
         if(accessibleTabs.length > 0) {
             setActiveTab(accessibleTabs[0].id);
@@ -798,7 +828,6 @@ const Accounting: React.FC = () => {
             return <div className="p-8"><p>شما به این بخش دسترسی ندارید.</p></div>;
         }
     }
-
 
     const renderContent = () => {
         switch (activeTab) {
