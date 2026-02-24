@@ -105,53 +105,133 @@ const AlertsTab: React.FC<TabProps> = ({ showToast }) => {
 };
 
 const CustomizationTab: React.FC<TabProps> = ({ showToast }) => {
-    const { storeSettings, updateSettings } = useAppContext();
+    const { storeSettings, updateSettings, products, saleInvoices, purchaseInvoices } = useAppContext();
     const [formData, setFormData] = useState({
         packageLabel: storeSettings.packageLabel || 'بسته',
-        unitLabel: storeSettings.unitLabel || 'عدد'
+        unitLabel: storeSettings.unitLabel || 'عدد',
+        baseCurrency: storeSettings.baseCurrency || 'AFN',
+        currencyConfigs: storeSettings.currencyConfigs
     });
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+    const isSystemEmpty = products.length === 0 && saleInvoices.length === 0 && purchaseInvoices.length === 0;
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleConfigChange = (code: 'AFN' | 'USD' | 'IRT', field: string, value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            currencyConfigs: {
+                ...prev.currencyConfigs,
+                [code]: {
+                    ...prev.currencyConfigs[code],
+                    [field]: value
+                }
+            }
+        }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         updateSettings({ ...storeSettings, ...formData });
-        showToast("شخصی‌سازی عناوین واحدها با موفقیت انجام شد.");
+        showToast("تنظیمات شخصی‌سازی با موفقیت ذخیره شد.");
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
-            <h3 className="text-xl font-bold text-slate-800 border-b pb-3 mb-4 hidden md:block">شخصی‌سازی واحدها</h3>
-            <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 mb-6">
-                <p className="text-indigo-800 text-sm font-medium leading-relaxed italic">
-                    در این بخش می‌توانید نام‌های «بسته» و «عدد» را به عناوین دلخواه خود (مانند کارتن، جین، حلقه، جفت و ...) تغییر دهید تا در تمام بخش‌های سیستم نمایش داده شوند.
-                </p>
+        <form onSubmit={handleSubmit} className="space-y-8 max-w-4xl mx-auto pb-10">
+            <div className="border-b pb-4">
+                <h3 className="text-xl font-black text-slate-800 mb-2">شخصی‌سازی واحدها و ارز پایه</h3>
+                <p className="text-sm text-slate-500 font-medium">تنظیمات مربوط به واحد کالاها و ارز اصلی سیستم را در این بخش مدیریت کنید.</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label htmlFor="packageLabel" className="block text-sm md:text-md font-bold text-slate-700 mb-2">نام واحد بزرگ (بسته/کارتن)</label>
-                    <input id="packageLabel" name="packageLabel" value={formData.packageLabel} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" placeholder="مثلاً: کارتن" />
-                </div>
-                <div>
-                    <label htmlFor="unitLabel" className="block text-sm md:text-md font-bold text-slate-700 mb-2">نام واحد کوچک (عدد/پک)</label>
-                    <input id="unitLabel" name="unitLabel" value={formData.unitLabel} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" placeholder="مثلاً: عدد" />
-                </div>
-            </div>
-            
-            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mt-8">
-                <h4 className="text-xs font-black text-slate-400 mb-4 uppercase tracking-widest">پیش‌نمایش در سیستم:</h4>
-                <div className="flex gap-4">
-                    <div className="bg-white px-4 py-2 rounded-lg border shadow-sm">
-                        <span className="text-[10px] text-slate-400 block font-bold">نمایش موجودی:</span>
-                        <span className="font-black text-slate-700">۱۰ {formData.packageLabel} و ۵ {formData.unitLabel}</span>
+
+            {/* Units Section */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h4 className="text-md font-black text-slate-700 mb-4 flex items-center gap-2">
+                    <SettingsIcon className="w-5 h-5 text-blue-500" /> عناوین واحدها
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label htmlFor="packageLabel" className="block text-sm font-bold text-slate-700 mb-2">نام واحد بزرگ (بسته/کارتن)</label>
+                        <input id="packageLabel" name="packageLabel" value={formData.packageLabel} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" />
+                    </div>
+                    <div>
+                        <label htmlFor="unitLabel" className="block text-sm font-bold text-slate-700 mb-2">نام واحد کوچک (عدد/پک)</label>
+                        <input id="unitLabel" name="unitLabel" value={formData.unitLabel} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold" />
                     </div>
                 </div>
             </div>
 
-            <div className="flex justify-end pt-6">
-                <button type="submit" className="w-full md:w-auto px-8 py-4 rounded-xl bg-blue-600 text-white font-black text-lg shadow-xl shadow-blue-100 btn-primary active:scale-[0.98]">ذخیره تغییرات</button>
+            {/* Currency Section */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h4 className="text-md font-black text-slate-700 mb-4 flex items-center gap-2">
+                    <KeyIcon className="w-5 h-5 text-indigo-500" /> تنظیمات ارز پایه و نرخ‌ها
+                </h4>
+                
+                <div className="mb-6">
+                    <label className="block text-sm font-bold text-slate-700 mb-2">انتخاب ارز پایه سیستم</label>
+                    <div className="flex flex-col md:flex-row items-center gap-4">
+                        <select 
+                            name="baseCurrency" 
+                            value={formData.baseCurrency} 
+                            onChange={handleChange} 
+                            disabled={!isSystemEmpty}
+                            className={`w-full md:w-64 p-3.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none font-black ${!isSystemEmpty ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-800'}`}
+                        >
+                            <option value="AFN">افغانی (AFN)</option>
+                            <option value="USD">دلار (USD)</option>
+                            <option value="IRT">تومان (IRT)</option>
+                        </select>
+                        {!isSystemEmpty && (
+                            <div className="flex items-center gap-2 text-red-500 bg-red-50 px-4 py-2 rounded-xl border border-red-100">
+                                <WarningIcon className="w-4 h-4" />
+                                <span className="text-xs font-bold">ارز پایه به دلیل وجود تراکنش در سیستم قابل تغییر نیست.</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-wider">تنظیمات روش محاسبه ارزهای فرعی:</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {(['AFN', 'USD', 'IRT'] as const).filter(c => c !== formData.baseCurrency).map(code => (
+                            <div key={code} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex justify-between items-center mb-3">
+                                    <span className="font-black text-slate-700">{code === 'AFN' ? 'افغانی' : code === 'USD' ? 'دلار' : 'تومان'}</span>
+                                    <span className="text-[10px] font-bold text-slate-400">کد: {code}</span>
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-500 mb-1">نام نمایشی</label>
+                                        <input 
+                                            value={formData.currencyConfigs[code].name} 
+                                            onChange={e => handleConfigChange(code, 'name', e.target.value)}
+                                            className="w-full p-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-50 outline-none font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-500 mb-1">روش محاسبه نسبت به ارز پایه</label>
+                                        <select 
+                                            value={formData.currencyConfigs[code].method}
+                                            onChange={e => handleConfigChange(code, 'method', e.target.value)}
+                                            className="w-full p-2 text-sm border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-50 outline-none font-bold"
+                                        >
+                                            <option value="multiply">ارز پایه × نرخ = {code} (ارز ضعیف‌تر)</option>
+                                            <option value="divide">ارز پایه ÷ نرخ = {code} (ارز قوی‌تر)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end pt-4">
+                <button type="submit" className="w-full md:w-auto px-10 py-4 rounded-2xl bg-blue-600 text-white font-black text-lg shadow-xl shadow-blue-100 btn-primary active:scale-[0.98]">
+                    ذخیره تمام تنظیمات شخصی‌سازی
+                </button>
             </div>
         </form>
     );

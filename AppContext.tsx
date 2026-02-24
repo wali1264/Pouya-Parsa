@@ -116,7 +116,13 @@ const getDefaultState = (): AppState => {
         storeSettings: {
             storeName: 'پویا پارسا', address: '', phone: '', lowStockThreshold: 10,
             expiryThresholdMonths: 3, currencyName: 'افغانی', currencySymbol: 'AFN',
-            packageLabel: 'بسته', unitLabel: 'عدد'
+            packageLabel: 'بسته', unitLabel: 'عدد',
+            baseCurrency: 'AFN',
+            currencyConfigs: {
+                AFN: { code: 'AFN', name: 'افغانی', symbol: 'AFN', method: 'multiply' },
+                USD: { code: 'USD', name: 'دلار', symbol: 'USD', method: 'divide' },
+                IRT: { code: 'IRT', name: 'تومان', symbol: 'IRT', method: 'multiply' }
+            }
         },
         cart: [], customerTransactions: [], supplierTransactions: [], payrollTransactions: [],
         activities: [], saleInvoiceCounter: 0, editingSaleInvoiceId: null, editingPurchaseInvoiceId: null,
@@ -209,24 +215,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
             }
 
-            setState(prev => ({
-                ...prev,
-                storeSettings: (settings as StoreSettings).storeName ? { ...prev.storeSettings, ...settings } : prev.storeSettings,
-                users,
-                roles: roles.length > 0 ? roles : [{ id: 'admin-role', name: 'Admin', permissions: ['page:dashboard', 'page:inventory', 'page:pos', 'page:purchases', 'page:accounting', 'page:reports', 'page:settings', 'page:in_transit', 'page:deposits'] }],
-                products, services, customers: entities.customers, suppliers: entities.suppliers,
-                employees: entities.employees, expenses: entities.expenses,
-                depositHolders: entities.depositHolders, depositTransactions: transactions.depositTransactions,
-                customerTransactions: transactions.customerTransactions,
-                supplierTransactions: transactions.supplierTransactions,
-                payrollTransactions: transactions.payrollTransactions,
-                saleInvoices: invoices.saleInvoices, 
-                purchaseInvoices: invoices.purchaseInvoices,
-                inTransitInvoices: invoices.inTransitInvoices,
-                activities: activity,
-                isAuthenticated: isAuth,
-                currentUser: restoredUser
-            }));
+            setState(prev => {
+                const mergedSettings = (settings as StoreSettings).storeName ? { ...prev.storeSettings, ...settings } : prev.storeSettings;
+                
+                // Ensure currencyConfigs exists for backward compatibility
+                if (!mergedSettings.currencyConfigs) {
+                    mergedSettings.currencyConfigs = prev.storeSettings.currencyConfigs;
+                }
+                if (!mergedSettings.baseCurrency) {
+                    mergedSettings.baseCurrency = prev.storeSettings.baseCurrency;
+                }
+
+                return {
+                    ...prev,
+                    storeSettings: mergedSettings,
+                    users,
+                    roles: roles.length > 0 ? roles : [{ id: 'admin-role', name: 'Admin', permissions: ['page:dashboard', 'page:inventory', 'page:pos', 'page:purchases', 'page:accounting', 'page:reports', 'page:settings', 'page:in_transit', 'page:deposits'] }],
+                    products, services, customers: entities.customers, suppliers: entities.suppliers,
+                    employees: entities.employees, expenses: entities.expenses,
+                    depositHolders: entities.depositHolders, depositTransactions: transactions.depositTransactions,
+                    customerTransactions: transactions.customerTransactions,
+                    supplierTransactions: transactions.supplierTransactions,
+                    payrollTransactions: transactions.payrollTransactions,
+                    saleInvoices: invoices.saleInvoices, 
+                    purchaseInvoices: invoices.purchaseInvoices,
+                    inTransitInvoices: invoices.inTransitInvoices,
+                    activities: activity,
+                    isAuthenticated: isAuth,
+                    currentUser: restoredUser
+                };
+            });
         } catch (error) {
             console.error("Critical Error fetching data:", error);
             showToast("⚠️ خطا در بارگذاری برنامه. لطفاً صفحه را رفرش کنید.");
@@ -485,16 +503,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return item;
         });
 
-        // 3. Financial Totals (Corrected Logic)
-        const totalAFN = cart.reduce((t, i) => {
+        // 3. Financial Totals (Dynamic Logic)
+        const totalBaseAmount = cart.reduce((t, i) => {
             const price = (i.type === 'product' && i.finalPrice !== undefined) ? i.finalPrice : (i.type === 'product' ? i.salePrice : i.price);
             return (price * i.quantity) + t;
         }, 0);
 
-        // Transactional amount calculation based on the user's "red line" rules:
-        // Dollar = Afghani divided by rate | Toman = Afghani multiplied by rate
-        const totalTransactional = currency === 'AFN' ? totalAFN : 
-                                  (currency === 'IRT' ? totalAFN * exchangeRate : totalAFN / exchangeRate);
+        // Transactional amount calculation based on the user's dynamic rules:
+        const config = state.storeSettings.currencyConfigs[currency];
+        const totalTransactional = currency === state.storeSettings.baseCurrency 
+            ? totalBaseAmount 
+            : (config.method === 'multiply' ? totalBaseAmount * exchangeRate : totalBaseAmount / exchangeRate);
 
         const invId = editingSaleInvoiceId || generateNextId('F', saleInvoices.map(i => i.id));
         
@@ -504,7 +523,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             items: itemsWithBatches, 
             subtotal: totalTransactional, 
             totalAmount: totalTransactional, 
-            totalAmountAFN: totalAFN, 
+            totalAmountAFN: totalBaseAmount, // This field name is legacy, it stores the base amount
             totalDiscount: 0, 
             timestamp: new Date().toISOString(), 
             cashier, 
@@ -544,8 +563,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 else if (currency === 'IRT') balIRT += totalTransactional;
                 else balAFN += totalTransactional;
                 
-                // The total balance is always trackable in AFN
-                balTotal += totalAFN;
+                // The total balance is always trackable in base currency
+                balTotal += totalBaseAmount;
 
                 const finalBal = { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal };
                 if (prevUpdate) prevUpdate.newBalances = finalBal;
@@ -590,21 +609,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (!originalItem) throw new Error("کالا در فاکتور اصلی یافت نشد.");
             if (ret.quantity > originalItem.quantity) throw new Error("تعداد مرجوعی بیش از تعداد فروخته شده است.");
 
-            const itemPriceAFN = (originalItem.type === 'product' && originalItem.finalPrice !== undefined) ? originalItem.finalPrice : (originalItem.type === 'product' ? originalItem.salePrice : originalItem.price);
+            const itemPriceBase = (originalItem.type === 'product' && originalItem.finalPrice !== undefined) ? originalItem.finalPrice : (originalItem.type === 'product' ? originalItem.salePrice : originalItem.price);
             const rate = originalInv.exchangeRate || 1;
             
             // Re-calculate the transactional price for returning
             let lineTotalTransactional = 0;
-            if (originalInv.currency === 'AFN') {
-                lineTotalTransactional = itemPriceAFN * ret.quantity;
-            } else if (originalInv.currency === 'IRT') {
-                lineTotalTransactional = (itemPriceAFN * rate) * ret.quantity;
+            const config = state.storeSettings.currencyConfigs[originalInv.currency];
+            
+            if (originalInv.currency === state.storeSettings.baseCurrency) {
+                lineTotalTransactional = itemPriceBase * ret.quantity;
+            } else if (config.method === 'multiply') {
+                lineTotalTransactional = (itemPriceBase * rate) * ret.quantity;
             } else {
-                lineTotalTransactional = (itemPriceAFN / rate) * ret.quantity;
+                lineTotalTransactional = (itemPriceBase / rate) * ret.quantity;
             }
 
             returnTotalTransactional += lineTotalTransactional;
-            returnTotalAFN += (itemPriceAFN * ret.quantity);
+            returnTotalAFN += (itemPriceBase * ret.quantity);
 
             if (originalItem.type === 'product' && originalItem.batchDeductions) {
                 let remainingToRestore = ret.quantity;
@@ -683,12 +704,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const id = data.id || generateNextId('P', purchaseInvoices.map(i => i.id));
         const rate = data.exchangeRate || 1;
         const totalCurrencyAmount = data.items.reduce((s: number, i: any) => s + (i.quantity * i.purchasePrice), 0);
-        const totalAmountAFN = data.currency === 'IRT' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate;
         
-        // Calculate additional cost per unit in AFN
+        const config = state.storeSettings.currencyConfigs[data.currency || state.storeSettings.baseCurrency];
+        const totalAmountBase = data.currency === state.storeSettings.baseCurrency 
+            ? totalCurrencyAmount 
+            : (config.method === 'multiply' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate);
+        
+        // Calculate additional cost per unit in base currency
         const totalQty = data.items.reduce((s: number, i: any) => s + i.quantity, 0);
-        const additionalCostAFN = data.additionalCost ? (data.currency === 'IRT' ? data.additionalCost / rate : data.additionalCost * rate) : 0;
-        const costPerUnitAFN = totalQty > 0 ? additionalCostAFN / totalQty : 0;
+        const additionalCostBase = data.additionalCost 
+            ? (data.currency === state.storeSettings.baseCurrency ? data.additionalCost : (config.method === 'multiply' ? data.additionalCost / rate : data.additionalCost * rate)) 
+            : 0;
+        const costPerUnitBase = totalQty > 0 ? additionalCostBase / totalQty : 0;
 
         const purchaseItems: PurchaseInvoiceItem[] = data.items.map((it: any) => ({
             ...it,
@@ -702,7 +729,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (data.currency === 'USD') newBalances.balanceUSD += totalCurrencyAmount;
         else if (data.currency === 'IRT') newBalances.balanceIRT += totalCurrencyAmount;
         else newBalances.balanceAFN += totalCurrencyAmount;
-        newBalances.balance += totalAmountAFN;
+        newBalances.balance += totalAmountBase;
 
         const supplierUpdate = {
             id: data.supplierId,
@@ -715,7 +742,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             productId: it.productId,
             lotNumber: it.lotNumber,
             stock: it.quantity,
-            purchasePrice: (data.currency === 'IRT' ? it.purchasePrice / rate : it.purchasePrice * rate) + costPerUnitAFN,
+            purchasePrice: (data.currency === state.storeSettings.baseCurrency ? it.purchasePrice : (config.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate)) + costPerUnitBase,
             purchaseDate: data.timestamp,
             expiryDate: it.expiryDate
         }));
@@ -749,21 +776,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         const rate = invoiceData.exchangeRate || 1;
         const totalCurrencyAmount = invoiceData.items.reduce((s: number, i: any) => s + (i.quantity * i.purchasePrice), 0);
-        const totalAmountAFN = invoiceData.currency === 'IRT' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate;
+        
+        const config = state.storeSettings.currencyConfigs[invoiceData.currency || state.storeSettings.baseCurrency];
+        const totalAmountBase = invoiceData.currency === state.storeSettings.baseCurrency 
+            ? totalCurrencyAmount 
+            : (config.method === 'multiply' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate);
 
         const oldRate = oldInv.exchangeRate || 1;
-        const oldTotalAFN = oldInv.currency === 'IRT' ? oldInv.totalAmount / oldRate : oldInv.totalAmount * oldRate;
+        const oldConfig = state.storeSettings.currencyConfigs[oldInv.currency || state.storeSettings.baseCurrency];
+        const oldTotalBase = oldInv.currency === state.storeSettings.baseCurrency 
+            ? oldInv.totalAmount 
+            : (oldConfig.method === 'multiply' ? oldInv.totalAmount / oldRate : oldInv.totalAmount * oldRate);
 
         let balAFN = supplier.balanceAFN, balUSD = supplier.balanceUSD, balIRT = supplier.balanceIRT, balTotal = supplier.balance;
         if (oldInv.currency === 'USD') balUSD -= oldInv.totalAmount;
         else if (oldInv.currency === 'IRT') balIRT -= oldInv.totalAmount;
         else balAFN -= oldInv.totalAmount;
-        balTotal -= oldTotalAFN;
+        balTotal -= oldTotalBase;
 
         if (invoiceData.currency === 'USD') balUSD += totalCurrencyAmount;
         else if (invoiceData.currency === 'IRT') balIRT += totalCurrencyAmount;
         else balAFN += totalCurrencyAmount;
-        balTotal += totalAmountAFN;
+        balTotal += totalAmountBase;
 
         const supplierUpdate = {
             id: invoiceData.supplierId,
@@ -809,7 +843,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return { ...originalItem, quantity: ret.quantity, receivedQty: ret.quantity };
         });
 
-        const totalAmountAFN = originalInv.currency === 'IRT' ? returnTotalCurrency / rate : returnTotalCurrency * rate;
+        const config = state.storeSettings.currencyConfigs[originalInv.currency || state.storeSettings.baseCurrency];
+        const totalAmountBase = originalInv.currency === state.storeSettings.baseCurrency 
+            ? returnTotalCurrency 
+            : (config.method === 'multiply' ? returnTotalCurrency / rate : returnTotalCurrency * rate);
 
         const returnInv: PurchaseInvoice = {
             id, type: 'return', originalInvoiceId, supplierId: originalInv.supplierId,
@@ -822,7 +859,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (originalInv.currency === 'USD') newBalances.balanceUSD -= returnTotalCurrency;
         else if (originalInv.currency === 'IRT') newBalances.balanceIRT -= returnTotalCurrency;
         else newBalances.balanceAFN -= returnTotalCurrency;
-        newBalances.balance -= totalAmountAFN;
+        newBalances.balance -= totalAmountBase;
 
         const supplierRefund = {
             id: supplier.id,
@@ -923,14 +960,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // 1. Calculate precise amount in the invoice's original currency for internal tracking
         let amountInInvoiceCurrency = amount;
         if (currency !== inv.currency) {
-            // First, convert the payment to base currency (AFN)
-            const amountInAFN = currency === 'IRT' ? amount / exchangeRate : amount * (currency === 'USD' ? exchangeRate : 1);
+            // First, convert the payment to base currency
+            const configPay = state.storeSettings.currencyConfigs[currency];
+            const amountInBase = currency === state.storeSettings.baseCurrency 
+                ? amount 
+                : (configPay.method === 'multiply' ? amount / exchangeRate : amount * exchangeRate);
             
-            // Then, convert from base (AFN) back to the invoice currency using the invoice's own historical rate
+            // Then, convert from base back to the invoice currency using the invoice's own historical rate
             const invoiceRate = inv.exchangeRate || 1;
-            amountInInvoiceCurrency = inv.currency === 'IRT' 
-                ? amountInAFN * invoiceRate 
-                : amountInAFN / (inv.currency === 'USD' ? invoiceRate : 1);
+            const configInv = state.storeSettings.currencyConfigs[inv.currency || state.storeSettings.baseCurrency];
+            
+            amountInInvoiceCurrency = inv.currency === state.storeSettings.baseCurrency 
+                ? amountInBase 
+                : (configInv.method === 'multiply' ? amountInBase * invoiceRate : amountInBase / invoiceRate);
         }
 
         // 2. Create updated invoice object with the newly added payment (Immutable Update)
@@ -959,9 +1001,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         api.addSupplier(s).then(ns => {
             if (initial && initial.amount > 0) {
                 const rate = initial.exchangeRate || 1;
-                const afnAmount = initial.currency === 'IRT' ? initial.amount / rate : initial.amount * rate;
+                const config = state.storeSettings.currencyConfigs[initial.currency as 'AFN'|'USD'|'IRT'];
+                const baseAmount = initial.currency === state.storeSettings.baseCurrency 
+                    ? initial.amount 
+                    : (config.method === 'multiply' ? initial.amount / rate : initial.amount * rate);
+                
                 const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: ns.id, type: initial.type === 'creditor' ? 'purchase' : 'payment', amount: initial.amount, date: new Date().toISOString(), description: 'تراز اول دوره', currency: initial.currency };
-                const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'creditor' ? afnAmount : -afnAmount };
+                const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'creditor' ? baseAmount : -baseAmount };
                 api.processPayment('supplier', ns.id, newB, tx).then(() => fetchData(true));
             } else fetchData(true);
         });
@@ -969,9 +1015,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const deleteSupplier = (id: string) => { api.deleteSupplier(id).then(() => fetchData(true)); };
     const addSupplierPayment = async (sid: string, a: number, d: string, cur: any = 'AFN', rate: number = 1) => {
         const s = state.suppliers.find(x => x.id === sid);
-        const afnAmount = cur === 'IRT' ? a / rate : a * rate;
+        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
         const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: sid, type: 'payment', amount: a, date: new Date().toISOString(), description: d, currency: cur };
-        const newB = { AFN: s!.balanceAFN - (cur==='AFN'?a:0), USD: s!.balanceUSD - (cur==='USD'?a:0), IRT: s!.balanceIRT - (cur==='IRT'?a:0), Total: s!.balance - afnAmount };
+        const newB = { AFN: s!.balanceAFN - (cur==='AFN'?a:0), USD: s!.balanceUSD - (cur==='USD'?a:0), IRT: s!.balanceIRT - (cur==='IRT'?a:0), Total: s!.balance - baseAmount };
         await api.processPayment('supplier', sid, newB, tx);
         await fetchData(true);
         return tx;
@@ -981,9 +1028,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         api.addCustomer(c).then(nc => {
             if (initial && initial.amount > 0) {
                 const rate = initial.exchangeRate || 1;
-                const afnAmount = initial.currency === 'IRT' ? initial.amount / rate : initial.amount * rate;
+                const config = state.storeSettings.currencyConfigs[initial.currency as 'AFN'|'USD'|'IRT'];
+                const baseAmount = initial.currency === state.storeSettings.baseCurrency 
+                    ? initial.amount 
+                    : (config.method === 'multiply' ? initial.amount / rate : initial.amount * rate);
+                
                 const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: nc.id, type: initial.type === 'debtor' ? 'credit_sale' : 'payment', amount: initial.amount, date: new Date().toISOString(), description: 'تراز اول دوره', currency: initial.currency };
-                const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'debtor' ? afnAmount : -afnAmount };
+                const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'debtor' ? baseAmount : -baseAmount };
                 api.processPayment('customer', nc.id, newB, tx).then(() => fetchData(true));
             } else fetchData(true);
         });
@@ -993,7 +1044,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const c = state.customers.find(x => x.id === cid);
         if (!c) return null;
         
-        const afnAmount = cur === 'IRT' ? a / rate : a * (cur === 'USD' ? rate : 1);
+        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
         const tx: CustomerTransaction = { 
             id: crypto.randomUUID(), 
             customerId: cid, 
@@ -1008,7 +1060,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             AFN: c.balanceAFN - (cur === 'AFN' ? a : 0), 
             USD: c.balanceUSD - (cur === 'USD' ? a : 0), 
             IRT: c.balanceIRT - (cur === 'IRT' ? a : 0), 
-            Total: c.balance - afnAmount 
+            Total: c.balance - baseAmount 
         };
 
         await api.processPayment('customer', cid, newB, tx);
@@ -1048,7 +1100,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await api.processPayment('employee', eid, emp.balance + a, tx);
         await api.addExpense(expense);
         await fetchData(true);
-        logActivity('payroll', `ثبت مساعده/تسویه برای ${emp.name}: ${a.toLocaleString()} AFN`);
+        const baseCurrencyName = state.storeSettings.currencyConfigs[state.storeSettings.baseCurrency]?.name || 'AFN';
+        logActivity('payroll', `ثبت مساعده/تسویه برای ${emp.name}: ${a.toLocaleString()} ${baseCurrencyName}`);
     };
 
     const processAndPaySalaries = () => {
@@ -1072,7 +1125,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const tx: DepositTransaction = { id: crypto.randomUUID(), holderId: hid, type: t, amount: a, currency: c, description: d, date: new Date().toISOString() };
         const newH = { ...holder! };
         const factor = t === 'deposit' ? 1 : -1;
-        if (c === 'AFN') newH.balanceAFN += factor * a; else if (c === 'USD') newH.balanceUSD += factor * a; else newH.balanceIRT += factor * a;
+        if (c === 'USD') newH.balanceUSD += factor * a; 
+        else if (c === 'IRT') newH.balanceIRT += factor * a; 
+        else newH.balanceAFN += factor * a;
         await api.updateDepositHolder(newH);
         await api.addDepositTransaction(tx);
         await fetchData(true);

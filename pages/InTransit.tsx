@@ -374,13 +374,15 @@ const InTransit: React.FC = () => {
         }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }, [inTransitInvoices, dateRange, activeTab]);
 
-    const totalFilteredValueAFN = useMemo(() => {
+    const totalFilteredValueBase = useMemo(() => {
         return filteredInvoices.reduce((sum, inv) => {
             const rate = inv.exchangeRate || 1;
-            const amountAFN = inv.currency === 'IRT' ? (inv.totalAmount / rate) : (inv.totalAmount * (inv.currency === 'USD' ? rate : 1));
-            return sum + Math.round(amountAFN);
+            const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
+            const amountBase = (inv.currency === storeSettings.baseCurrency) ? inv.totalAmount : 
+                              (config.method === 'multiply' ? inv.totalAmount * rate : inv.totalAmount / rate);
+            return sum + Math.round(amountBase);
         }, 0);
-    }, [filteredInvoices]);
+    }, [filteredInvoices, storeSettings]);
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -433,8 +435,8 @@ const InTransit: React.FC = () => {
                 <DateRangeFilter onFilterChange={(start, end) => setDateRange({ start, end })} />
                 <div className="flex items-center gap-4 bg-white/80 px-6 py-3 rounded-2xl border border-blue-100 shadow-sm">
                     <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">ارزش تخمینی این لیست (AFN)</p>
-                        <p className="text-2xl font-black text-blue-700" dir="ltr">{totalFilteredValueAFN.toLocaleString()}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">ارزش تخمینی این لیست ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})</p>
+                        <p className="text-2xl font-black text-blue-700" dir="ltr">{totalFilteredValueBase.toLocaleString()}</p>
                     </div>
                     <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><TruckIcon className="w-6 h-6" /></div>
                 </div>
@@ -526,15 +528,36 @@ const InTransit: React.FC = () => {
                             <div className="flex items-center gap-6 mb-8 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
                                 <span className="font-black text-blue-900 text-sm">ارز معامله:</span>
                                 <div className="flex items-center gap-6">
-                                    {['AFN', 'USD', 'IRT'].map(c => (
+                                    {(['AFN', 'USD', 'IRT'] as const).map(c => (
                                         <label key={c} className="flex items-center gap-2 cursor-pointer group">
-                                            <input type="radio" checked={currency === c} onChange={() => {setCurrency(c as any); if(c==='AFN') setExchangeRate('');}} className="w-5 h-5 text-blue-600" />
-                                            <span className="text-sm font-bold text-slate-700 group-hover:text-blue-600 transition-colors">{c==='AFN'?'افغانی':(c==='USD'?'دلار':'تومان')}</span>
+                                            <input 
+                                                type="radio" 
+                                                checked={currency === c} 
+                                                onChange={() => {
+                                                    setCurrency(c); 
+                                                    if(c === storeSettings.baseCurrency) setExchangeRate('');
+                                                }} 
+                                                className="w-5 h-5 text-blue-600" 
+                                            />
+                                            <span className="text-sm font-bold text-slate-700 group-hover:text-blue-600 transition-colors">
+                                                {c === 'AFN' ? 'افغانی' : c === 'USD' ? 'دلار' : 'تومان'}
+                                            </span>
                                         </label>
                                     ))}
                                 </div>
-                                {currency !== 'AFN' && (
-                                    <div className="flex items-center gap-3 mr-auto animate-modal-zoom-in"><span className="text-xs font-black text-slate-400">نرخ هر {currency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span><input name="exchangeRate" type="text" inputMode="decimal" value={exchangeRate} onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-24 h-11 p-2 bg-white border-2 border-blue-200 rounded-xl text-center font-mono font-black focus:border-blue-500 outline-none shadow-sm" /></div>
+                                {currency !== storeSettings.baseCurrency && (
+                                    <div className="flex items-center gap-3 mr-auto animate-modal-zoom-in">
+                                        <span className="text-xs font-black text-slate-400">نرخ هر {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency} به {currency}:</span>
+                                        <input 
+                                            name="exchangeRate" 
+                                            type="text" 
+                                            inputMode="decimal" 
+                                            value={exchangeRate} 
+                                            onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
+                                            placeholder="نرخ" 
+                                            className="w-24 h-11 p-2 bg-white border-2 border-blue-200 rounded-xl text-center font-mono font-black focus:border-blue-500 outline-none shadow-sm" 
+                                        />
+                                    </div>
                                 )}
                             </div>
                             <div className="relative mb-6">
@@ -569,7 +592,7 @@ const InTransit: React.FC = () => {
                                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">ارزش کل سفارش</p>
                                 <p className="text-2xl font-black text-blue-600" dir="ltr">{totalInCurrency.toLocaleString()} {currency}</p>
                             </div>
-                            <div className="flex gap-4 w-full md:w-auto"><button onClick={handleCloseModal} className="flex-1 md:flex-none px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">لغو</button><button onClick={() => { const finalItems = items.map(d => ({ productId: d.productId, quantity: Number(d.quantity || 0), purchasePrice: Number(d.purchasePrice || 0), lotNumber: d.lotNumber.trim(), expiryDate: d.expiryDate || undefined })); const data = { id: editingInvoiceId || '', supplierId, invoiceNumber, items: finalItems, timestamp: invoiceDate + 'T' + new Date().toISOString().split('T')[1], currency, exchangeRate: currency !== 'AFN' ? Number(exchangeRate) : 1, expectedArrivalDate, status: 'active' as const }; const result = editingInvoiceId ? updateInTransitInvoice(data) : addInTransitInvoice(data); if (result.success) handleCloseModal(); }} className="flex-[2] md:flex-none px-14 py-4 rounded-2xl font-black text-lg bg-blue-600 text-white shadow-2xl">ثبت نهایی</button></div>
+                            <div className="flex gap-4 w-full md:w-auto"><button onClick={handleCloseModal} className="flex-1 md:flex-none px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">لغو</button><button onClick={() => { const finalItems = items.map(d => ({ productId: d.productId, quantity: Number(d.quantity || 0), purchasePrice: Number(d.purchasePrice || 0), lotNumber: d.lotNumber.trim(), expiryDate: d.expiryDate || undefined })); const data = { id: editingInvoiceId || '', supplierId, invoiceNumber, items: finalItems, timestamp: invoiceDate + 'T' + new Date().toISOString().split('T')[1], currency, exchangeRate: currency === storeSettings.baseCurrency ? 1 : Number(exchangeRate), expectedArrivalDate, status: 'active' as const }; const result = editingInvoiceId ? updateInTransitInvoice(data) : addInTransitInvoice(data); if (result.success) handleCloseModal(); }} className="flex-[2] md:flex-none px-14 py-4 rounded-2xl font-black text-lg bg-blue-600 text-white shadow-2xl">ثبت نهایی</button></div>
                         </div>
                     </div>
                 </div>

@@ -32,11 +32,14 @@ const SuppliersTab = () => {
     const [historyModalData, setHistoryModalData] = useState<{ person: Supplier, transactions: SupplierTransaction[] } | null>(null);
     const [receiptModalData, setReceiptModalData] = useState<{ person: Supplier, transaction: SupplierTransaction } | null>(null);
     
-    const [addSupplierCurrency, setAddSupplierCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const baseCurrency = storeSettings.baseCurrency || 'AFN';
+    const baseCurrencyName = storeSettings.currencyConfigs[baseCurrency]?.name || 'AFN';
+
+    const [addSupplierCurrency, setAddSupplierCurrency] = useState<'AFN' | 'USD' | 'IRT'>(baseCurrency);
     const [addSupplierRate, setAddSupplierRate] = useState('');
     const [addSupplierAmount, setAddSupplierAmount] = useState('');
 
-    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>(baseCurrency);
     const [exchangeRate, setExchangeRate] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
 
@@ -45,8 +48,8 @@ const SuppliersTab = () => {
     const logisticsCapital = useMemo(() => {
         return inTransitInvoices.filter(inv => inv.status !== 'closed').reduce((sum, inv) => {
             const rate = inv.exchangeRate || 1;
-            const paidAFN = (inv.paidAmount || 0) * rate;
-            return sum + paidAFN;
+            const paidBase = (inv.paidAmount || 0) * rate;
+            return sum + paidBase;
         }, 0);
     }, [inTransitInvoices]);
 
@@ -55,9 +58,9 @@ const SuppliersTab = () => {
         const formData = new FormData(e.currentTarget);
         const initialAmount = Number(addSupplierAmount);
         const initialType = formData.get('balanceType') as 'creditor' | 'debtor';
-        if (addSupplierCurrency !== 'AFN' && initialAmount > 0 && (!addSupplierRate || Number(addSupplierRate) <= 0)) { showToast("لطفا نرخ ارز را وارد کنید."); return; }
-        addSupplier({ name: formData.get('name') as string, contactPerson: formData.get('contactPerson') as string, phone: formData.get('phone') as string, }, initialAmount > 0 ? { amount: initialAmount, type: initialType, currency: addSupplierCurrency, exchangeRate: addSupplierCurrency === 'AFN' ? 1 : Number(addSupplierRate) } : undefined);
-        setAddSupplierCurrency('AFN'); setAddSupplierRate(''); setAddSupplierAmount(''); setIsAddModalOpen(false);
+        if (addSupplierCurrency !== baseCurrency && initialAmount > 0 && (!addSupplierRate || Number(addSupplierRate) <= 0)) { showToast("لطفا نرخ ارز را وارد کنید."); return; }
+        addSupplier({ name: formData.get('name') as string, contactPerson: formData.get('contactPerson') as string, phone: formData.get('phone') as string, }, initialAmount > 0 ? { amount: initialAmount, type: initialType, currency: addSupplierCurrency, exchangeRate: addSupplierCurrency === baseCurrency ? 1 : Number(addSupplierRate) } : undefined);
+        setAddSupplierCurrency(baseCurrency); setAddSupplierRate(''); setAddSupplierAmount(''); setIsAddModalOpen(false);
     };
     
     const handleDelete = (supplier: Supplier) => {
@@ -65,16 +68,22 @@ const SuppliersTab = () => {
         if (window.confirm(`آیا از حذف تأمین‌کننده "${supplier.name}" اطمینان دارید؟`)) deleteSupplier(supplier.id);
     };
 
-    const handleOpenPayModal = (supplier: Supplier) => { setSelectedSupplier(supplier); setPaymentCurrency('AFN'); setExchangeRate(''); setPaymentAmount(''); setIsPayModalOpen(true); };
+    const handleOpenPayModal = (supplier: Supplier) => { 
+        setSelectedSupplier(supplier); 
+        setPaymentCurrency(storeSettings.baseCurrency || 'AFN'); 
+        setExchangeRate(''); 
+        setPaymentAmount(''); 
+        setIsPayModalOpen(true); 
+    };
 
     const handleAddPaymentForm = async (e: React.FormEvent<HTMLDivElement> | React.FormEvent<HTMLFormElement>) => {
         e.preventDefault(); if (!selectedSupplier) return;
         const amount = Number(paymentAmount);
         const description = (new FormData(e.currentTarget as HTMLFormElement)).get('description') as string || 'پرداخت وجه';
         if (!amount || amount <= 0) { showToast("مبلغ باید بزرگتر از صفر باشد."); return; }
-        if (paymentCurrency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) { showToast("لطفاً نرخ ارز را وارد کنید."); return; }
+        if (paymentCurrency !== baseCurrency && (!exchangeRate || Number(exchangeRate) <= 0)) { showToast("لطفاً نرخ ارز را وارد کنید."); return; }
         
-        const newTransaction = await addSupplierPayment(selectedSupplier.id, amount, description, paymentCurrency, paymentCurrency === 'AFN' ? 1 : Number(exchangeRate));
+        const newTransaction = await addSupplierPayment(selectedSupplier.id, amount, description, paymentCurrency, paymentCurrency === baseCurrency ? 1 : Number(exchangeRate));
         
         if (newTransaction) { 
             setIsPayModalOpen(false); 
@@ -85,9 +94,17 @@ const SuppliersTab = () => {
     
     const handleViewHistory = (supplier: Supplier) => { const transactions = supplierTransactions.filter(t => t.supplierId === supplier.id); setHistoryModalData({ person: supplier, transactions }); };
 
-    const convertedInitialBalance = useMemo(() => { if (!addSupplierAmount || !addSupplierRate || Number(addSupplierRate) <= 0) return 0; return addSupplierCurrency === 'IRT' ? Number(addSupplierAmount) / Number(addSupplierRate) : Number(addSupplierAmount) * Number(addSupplierRate); }, [addSupplierAmount, addSupplierRate, addSupplierCurrency]);
+    const convertedInitialBalance = useMemo(() => { 
+        if (!addSupplierAmount || !addSupplierRate || Number(addSupplierRate) <= 0) return 0; 
+        const config = storeSettings.currencyConfigs[addSupplierCurrency];
+        return config.method === 'multiply' ? Number(addSupplierAmount) * Number(addSupplierRate) : Number(addSupplierAmount) / Number(addSupplierRate); 
+    }, [addSupplierAmount, addSupplierRate, addSupplierCurrency, storeSettings.currencyConfigs]);
 
-    const convertedPayment = useMemo(() => { if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0; return paymentCurrency === 'IRT' ? Number(paymentAmount) / Number(exchangeRate) : Number(paymentAmount) * Number(exchangeRate); }, [paymentAmount, exchangeRate, paymentCurrency]);
+    const convertedPayment = useMemo(() => { 
+        if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0; 
+        const config = storeSettings.currencyConfigs[paymentCurrency];
+        return config.method === 'multiply' ? Number(paymentAmount) * Number(exchangeRate) : Number(paymentAmount) / Number(exchangeRate); 
+    }, [paymentAmount, exchangeRate, paymentCurrency, storeSettings.currencyConfigs]);
 
     return (
         <div>
@@ -95,7 +112,7 @@ const SuppliersTab = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-blue-100 uppercase tracking-widest mb-1 opacity-80">سرمایه در گردش لجستیک (AFN)</p>
+                        <p className="text-xs font-black text-blue-100 uppercase tracking-widest mb-1 opacity-80">سرمایه در گردش لجستیک ({baseCurrency})</p>
                         <h4 className="text-2xl font-black drop-shadow-sm">{logisticsCapital.toLocaleString()}</h4>
                         <p className="text-[10px] text-blue-200 mt-1 font-bold">مجموع مبالغ پیش‌پرداخت کالاهای در راه</p>
                     </div>
@@ -127,7 +144,7 @@ const SuppliersTab = () => {
                                 <td className="p-4 text-lg text-slate-600">{s.phone}</td>
                                 <td className="p-4 text-md font-black" dir="ltr">
                                     <div className="flex flex-col gap-1 items-center">
-                                        <span className="text-red-600">{Math.round(s.balanceAFN || 0).toLocaleString()} {storeSettings.currencyName}</span>
+                                        <span className="text-red-600">{Math.round(s.balanceAFN || 0).toLocaleString()} {baseCurrencyName}</span>
                                         <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(s.balanceUSD || 0).toLocaleString()} $</span>
                                         <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(s.balanceIRT || 0).toLocaleString()} تومان</span>
                                     </div>
@@ -155,7 +172,7 @@ const SuppliersTab = () => {
                         <div className="mt-4 pt-4 border-t border-dashed border-slate-200 flex justify-between items-center">
                             <div className="text-right">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">بدهی ما</p>
-                                <div className="flex flex-col items-start font-black text-sm" dir="ltr"><p className="text-red-600 text-base">{Math.round(s.balanceAFN || 0).toLocaleString()} AFN</p><p className="text-blue-600">{(s.balanceUSD || 0).toLocaleString()} $</p><p className="text-orange-600">{(s.balanceIRT || 0).toLocaleString()} IRT</p></div>
+                                <div className="flex flex-col items-start font-black text-sm" dir="ltr"><p className="text-red-600 text-base">{Math.round(s.balanceAFN || 0).toLocaleString()} {baseCurrency}</p><p className="text-blue-600">{(s.balanceUSD || 0).toLocaleString()} $</p><p className="text-orange-600">{(s.balanceIRT || 0).toLocaleString()} IRT</p></div>
                             </div>
                             <button onClick={() => handleOpenPayModal(s)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-lg active:shadow-none transition-all">ثبت پرداخت</button>
                         </div>
@@ -178,9 +195,14 @@ const SuppliersTab = () => {
                                     </label>
                                 ))}
                             </div>
-                            {addSupplierCurrency !== 'AFN' && <div className="flex items-center gap-3"><span className="text-xs whitespace-nowrap font-bold text-slate-500">نرخ تبدیل:</span><input type="text" inputMode="decimal" value={addSupplierRate} onChange={e => setAddSupplierRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center outline-none" /></div>}
+                            {addSupplierCurrency !== baseCurrency && (
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xs whitespace-nowrap font-bold text-slate-500">نرخ تبدیل ({baseCurrencyName} به {addSupplierCurrency}):</span>
+                                    <input type="text" inputMode="decimal" value={addSupplierRate} onChange={e => setAddSupplierRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center outline-none" />
+                                </div>
+                            )}
                             <div className="flex gap-2"><input name="initialBalance" type="text" inputMode="decimal" value={addSupplierAmount} onChange={e => setAddSupplierAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="مبلغ" className="w-2/3 p-2.5 border border-slate-200 rounded-xl outline-none" /><select name="balanceType" className="w-1/3 p-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold"><option value="creditor">ما بدهکاریم</option><option value="debtor">او بدهکار است</option></select></div>
-                            {addSupplierCurrency !== 'AFN' && convertedInitialBalance > 0 && <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} AFN</p>}
+                            {addSupplierCurrency !== baseCurrency && convertedInitialBalance > 0 && <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} {baseCurrencyName}</p>}
                         </div>
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl hover:bg-blue-700 transition-all font-black text-lg">ذخیره نهایی</button>
                     </form>
@@ -197,9 +219,14 @@ const SuppliersTab = () => {
                                 </label>
                             ))}
                         </div>
-                        {paymentCurrency !== 'AFN' && <div className="flex items-center gap-3"><span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ تبدیل:</span><input type="text" inputMode="decimal" value={exchangeRate} onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" /></div>}
+                        {paymentCurrency !== baseCurrency && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ تبدیل ({baseCurrencyName} به {paymentCurrency}):</span>
+                                <input type="text" inputMode="decimal" value={exchangeRate} onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" />
+                            </div>
+                        )}
                         <input name="amount" type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl font-bold text-center text-xl" required />
-                        {paymentCurrency !== 'AFN' && convertedPayment > 0 && <p className="text-[10px] font-black text-emerald-600 text-left">معادل از حساب کل: {Math.round(convertedPayment).toLocaleString()} AFN</p>}
+                        {paymentCurrency !== baseCurrency && convertedPayment > 0 && <p className="text-[10px] font-black text-emerald-600 text-left">معادل از حساب کل: {Math.round(convertedPayment).toLocaleString()} {baseCurrencyName}</p>}
                         <input name="description" placeholder="توضیحات (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl font-black text-lg active:scale-[0.98]">ثبت و چاپ رسید</button>
                     </form>
@@ -370,13 +397,16 @@ const CustomersTab = () => {
     const [historyModalData, setHistoryModalData] = useState<{ person: Customer, transactions: CustomerTransaction[] } | null>(null);
     const [receiptModalData, setReceiptModalData] = useState<{ person: Customer, transaction: CustomerTransaction } | null>(null);
 
+    const baseCurrency = storeSettings.baseCurrency || 'AFN';
+    const baseCurrencyName = storeSettings.currencyConfigs[baseCurrency]?.name || 'AFN';
+
     // Add Customer State
-    const [addCustomerCurrency, setAddCustomerCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [addCustomerCurrency, setAddCustomerCurrency] = useState<'AFN' | 'USD' | 'IRT'>(baseCurrency);
     const [addCustomerRate, setAddCustomerRate] = useState('');
     const [addCustomerAmount, setAddCustomerAmount] = useState('');
 
     // Payment State
-    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [paymentCurrency, setPaymentCurrency] = useState<'AFN' | 'USD' | 'IRT'>(baseCurrency);
     const [exchangeRate, setExchangeRate] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [selectedTrusteeId, setSelectedTrusteeId] = useState<string>('');
@@ -401,7 +431,7 @@ const CustomersTab = () => {
         const initialAmount = Number(addCustomerAmount);
         const initialType = formData.get('balanceType') as 'creditor' | 'debtor';
 
-        if (addCustomerCurrency !== 'AFN' && initialAmount > 0 && (!addCustomerRate || Number(addCustomerRate) <= 0)) {
+        if (addCustomerCurrency !== baseCurrency && initialAmount > 0 && (!addCustomerRate || Number(addCustomerRate) <= 0)) {
             showToast("لطفا نرخ ارز را وارد کنید.");
             return;
         }
@@ -413,10 +443,10 @@ const CustomersTab = () => {
             amount: initialAmount, 
             type: initialType,
             currency: addCustomerCurrency,
-            exchangeRate: addCustomerCurrency === 'AFN' ? 1 : Number(addCustomerRate)
+            exchangeRate: addCustomerCurrency === baseCurrency ? 1 : Number(addCustomerRate)
         } : undefined);
         
-        setAddCustomerCurrency('AFN');
+        setAddCustomerCurrency(baseCurrency);
         setAddCustomerRate('');
         setAddCustomerAmount('');
         setIsAddModalOpen(false);
@@ -434,7 +464,7 @@ const CustomersTab = () => {
 
     const handleOpenPayModal = (customer: Customer) => {
         setSelectedCustomer(customer);
-        setPaymentCurrency('AFN');
+        setPaymentCurrency(storeSettings.baseCurrency || 'AFN');
         setExchangeRate('');
         setPaymentAmount('');
         setSelectedTrusteeId('');
@@ -454,7 +484,7 @@ const CustomersTab = () => {
             return;
         }
 
-        if (paymentCurrency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+        if (paymentCurrency !== baseCurrency && (!exchangeRate || Number(exchangeRate) <= 0)) {
             showToast("لطفاً نرخ ارز را وارد کنید.");
             return;
         }
@@ -464,7 +494,7 @@ const CustomersTab = () => {
             amount, 
             description, 
             paymentCurrency, 
-            paymentCurrency === 'AFN' ? 1 : Number(exchangeRate),
+            paymentCurrency === baseCurrency ? 1 : Number(exchangeRate),
             selectedTrusteeId || undefined
         );
         
@@ -492,17 +522,19 @@ const CustomersTab = () => {
 
     const convertedInitialBalance = useMemo(() => {
         if (!addCustomerAmount || !addCustomerRate || Number(addCustomerRate) <= 0) return 0;
-        return addCustomerCurrency === 'IRT' 
-            ? Number(addCustomerAmount) / Number(addCustomerRate)
-            : Number(addCustomerAmount) * Number(addCustomerRate);
-    }, [addCustomerAmount, addCustomerRate, addCustomerCurrency]);
+        const config = storeSettings.currencyConfigs[addCustomerCurrency];
+        return config.method === 'multiply' 
+            ? Number(addCustomerAmount) * Number(addCustomerRate)
+            : Number(addCustomerAmount) / Number(addCustomerRate);
+    }, [addCustomerAmount, addCustomerRate, addCustomerCurrency, storeSettings.currencyConfigs]);
 
     const convertedPayment = useMemo(() => {
         if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0;
-        return paymentCurrency === 'IRT'
-            ? Number(paymentAmount) / Number(exchangeRate)
-            : Number(paymentAmount) * Number(exchangeRate);
-    }, [paymentAmount, exchangeRate, paymentCurrency]);
+        const config = storeSettings.currencyConfigs[paymentCurrency];
+        return config.method === 'multiply'
+            ? Number(paymentAmount) * Number(exchangeRate)
+            : Number(paymentAmount) / Number(exchangeRate);
+    }, [paymentAmount, exchangeRate, paymentCurrency, storeSettings.currencyConfigs]);
 
     const selectedTrustee = useMemo(() => depositHolders.find(h => h.id === selectedTrusteeId), [depositHolders, selectedTrusteeId]);
 
@@ -529,7 +561,7 @@ const CustomersTab = () => {
                                 <td className="p-4 text-md text-slate-600">{c.phone}</td>
                                 <td className="p-4 text-md font-black" dir="ltr">
                                     <div className="flex flex-col gap-1 items-center">
-                                        <span className="text-emerald-600">{Math.round(c.balanceAFN || 0).toLocaleString()} {storeSettings.currencyName}</span>
+                                        <span className="text-emerald-600">{Math.round(c.balanceAFN || 0).toLocaleString()} {baseCurrencyName}</span>
                                         <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(c.balanceUSD || 0).toLocaleString()} $</span>
                                         <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(c.balanceIRT || 0).toLocaleString()} تومان</span>
                                     </div>
@@ -575,7 +607,7 @@ const CustomersTab = () => {
                             <div className="text-right">
                                 <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">طلب ما</p>
                                 <div className="flex flex-col items-start font-black text-sm" dir="ltr">
-                                    <p className="text-emerald-600 text-base">{Math.round(c.balanceAFN || 0).toLocaleString()} AFN</p>
+                                    <p className="text-emerald-600 text-base">{Math.round(c.balanceAFN || 0).toLocaleString()} {baseCurrency}</p>
                                     <p className="text-blue-600">{(c.balanceUSD || 0).toLocaleString()} $</p>
                                     <p className="text-orange-600">{(c.balanceIRT || 0).toLocaleString()} IRT</p>
                                 </div>
@@ -595,8 +627,8 @@ const CustomersTab = () => {
                             <p className="text-sm font-black text-blue-800">تراز اول دوره (اختیاری)</p>
                             <div className="flex gap-4">
                                 <label className="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" checked={addCustomerCurrency === 'AFN'} onChange={() => {setAddCustomerCurrency('AFN'); setAddCustomerRate('');}} className="text-blue-600" />
-                                    <span className="text-sm font-bold text-slate-700">افغانی</span>
+                                    <input type="radio" checked={addCustomerCurrency === baseCurrency} onChange={() => {setAddCustomerCurrency(baseCurrency as any); setAddCustomerRate('');}} className="text-blue-600" />
+                                    <span className="text-sm font-bold text-slate-700">{baseCurrencyName}</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer group">
                                     <input type="radio" checked={addCustomerCurrency === 'USD'} onChange={() => setAddCustomerCurrency('USD')} className="text-green-600" />
@@ -607,9 +639,9 @@ const CustomersTab = () => {
                                     <span className="text-sm font-bold text-slate-700">تومان</span>
                                 </label>
                             </div>
-                            {addCustomerCurrency !== 'AFN' && (
+                            {addCustomerCurrency !== baseCurrency && (
                                 <div className="flex items-center gap-3">
-                                    <span className="text-xs font-bold text-slate-400">نرخ {addCustomerCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
+                                    <span className="text-xs font-bold text-slate-400">نرخ تبدیل:</span>
                                     <input type="text" inputMode="decimal" value={addCustomerRate} onChange={e => setAddCustomerRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" />
                                 </div>
                             )}
@@ -620,8 +652,8 @@ const CustomersTab = () => {
                                     <option value="creditor">بستانکار است</option>
                                 </select>
                             </div>
-                            {addCustomerCurrency !== 'AFN' && convertedInitialBalance > 0 && (
-                                <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} AFN</p>
+                            {addCustomerCurrency !== baseCurrency && convertedInitialBalance > 0 && (
+                                <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} {baseCurrencyName}</p>
                             )}
                         </div>
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg">ذخیره مشتری</button>

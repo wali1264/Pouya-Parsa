@@ -54,7 +54,10 @@ const ProductSide: React.FC<{
     currency, exchangeRate, onMobileCheckout
 }) => {
     
-    const cartTotalAFN = cart.reduce((total, item) => {
+    const baseCurrency = storeSettings.baseCurrency || 'AFN';
+    const baseCurrencyName = storeSettings.currencyConfigs?.[baseCurrency]?.name || 'AFN';
+
+    const cartTotalBase = cart.reduce((total, item) => {
         const price = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
         return total + (price * item.quantity);
     }, 0);
@@ -160,7 +163,7 @@ const ProductSide: React.FC<{
                     </div>
                     <div>
                         <p className="text-[10px] text-blue-100 font-bold">مجموع فعلی سبد:</p>
-                        <p className="text-white font-black">{Math.round(cartTotalAFN).toLocaleString()} AFN</p>
+                        <p className="text-white font-black">{Math.round(cartTotalBase).toLocaleString()} {baseCurrencyName}</p>
                     </div>
                 </div>
                 <button 
@@ -187,11 +190,15 @@ const CartSide: React.FC<any> = ({
 }) => {
     
     const rateNum = Number(exchangeRate) || 1;
-    const convertedTotal = currency === 'AFN' ? totalAmount : 
-                          (currency === 'IRT' ? Math.round(totalAmount * rateNum) : totalAmount / rateNum);
+    const baseCurrency = storeSettings.baseCurrency || 'AFN';
+    const baseCurrencyName = storeSettings.currencyConfigs[baseCurrency]?.name || 'AFN';
+    const config = storeSettings.currencyConfigs[currency];
+    
+    const convertedTotal = currency === baseCurrency ? totalAmount : 
+                          (config.method === 'multiply' ? Math.round(totalAmount * rateNum) : totalAmount / rateNum);
 
     const selectedCustomer = customers.find((c: Customer) => c.id === selectedCustomerId);
-    const isOverLimit = selectedCustomer && selectedCustomer.balance > (selectedCustomer.creditLimit || Infinity);
+    const isOverLimit = selectedCustomer && selectedCustomer.creditLimit > 0 && (selectedCustomer.balance + totalAmount) > selectedCustomer.creditLimit;
 
     return (
      <>
@@ -266,13 +273,19 @@ const CartSide: React.FC<any> = ({
                  {/* Multi-Currency Selection Bar */}
                 <div className="flex items-center justify-between mb-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
                     <div className="flex gap-2">
-                        <button onClick={() => setCurrency('AFN')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === 'AFN' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>AFN</button>
-                        <button onClick={() => setCurrency('USD')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === 'USD' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>USD</button>
-                        <button onClick={() => setCurrency('IRT')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === 'IRT' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>IRT</button>
+                        {(['AFN', 'USD', 'IRT'] as const).map(c => (
+                            <button 
+                                key={c}
+                                onClick={() => setCurrency(c)} 
+                                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === c ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}
+                            >
+                                {c}
+                            </button>
+                        ))}
                     </div>
-                    {currency !== 'AFN' && (
+                    {currency !== baseCurrency && (
                         <div className="flex items-center gap-2">
-                             <span className="text-[10px] font-black text-slate-400">نرخ تبدیل:</span>
+                             <span className="text-[10px] font-black text-slate-400">نرخ تبدیل ({baseCurrency} به {currency}):</span>
                              <input 
                                 type="text" 
                                 inputMode="decimal"
@@ -290,7 +303,7 @@ const CartSide: React.FC<any> = ({
                         <label htmlFor="customer-select" className="text-md font-semibold text-slate-700">مشتری (برای فروش نسیه)</label>
                         {selectedCustomer && (
                             <span className={`text-xs font-bold ${isOverLimit ? 'text-orange-600 animate-pulse' : 'text-slate-400'}`}>
-                                {isOverLimit ? '⚠️ سقف اعتبار رد شده' : `تراز: ${Math.round(selectedCustomer.balance).toLocaleString()} AFN`}
+                                {isOverLimit ? '⚠️ سقف اعتبار رد شده' : `تراز: ${Math.round(selectedCustomer.balance).toLocaleString()} ${baseCurrencyName}`}
                             </span>
                         )}
                     </div>
@@ -309,11 +322,11 @@ const CartSide: React.FC<any> = ({
                         <span className="text-lg font-bold text-slate-500">مبلغ کل:</span>
                         <div className="flex flex-col items-end">
                             <span className="text-2xl font-extrabold text-blue-700">
-                                {convertedTotal.toLocaleString()} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyName)}
+                                {convertedTotal.toLocaleString()} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyConfigs[currency]?.name || currency)}
                             </span>
-                            {currency !== 'AFN' && (
+                            {currency !== baseCurrency && (
                                 <span className="text-[10px] font-bold text-slate-400">
-                                    معادل: {totalAmount.toLocaleString()} AFN
+                                    معادل: {totalAmount.toLocaleString()} {baseCurrencyName}
                                 </span>
                             )}
                         </div>
@@ -658,7 +671,7 @@ const POS: React.FC = () => {
         if (isProcessing) return; 
         if (!currentUser) { showToast("خطا: کاربر فعلی مشخص نیست."); return; }
         
-        if (currency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+        if (currency !== baseCurrency && (!exchangeRate || Number(exchangeRate) <= 0)) {
             showToast("لطفاً نرخ تبدیل ارز را وارد کنید.");
             return;
         }
@@ -669,7 +682,7 @@ const POS: React.FC = () => {
                 currentUser.username, 
                 selectedCustomerId || undefined, 
                 currency, 
-                currency === 'AFN' ? 1 : Number(exchangeRate)
+                currency === baseCurrency ? 1 : Number(exchangeRate)
             );
             
             showToast(result.message);
@@ -679,7 +692,7 @@ const POS: React.FC = () => {
                 setSelectedCustomerId('');
                 setMobileView('products');
                 setActiveTab('cart');
-                setCurrency('AFN');
+                setCurrency(baseCurrency);
                 setExchangeRate('');
             }
         } catch (e) {
@@ -688,7 +701,7 @@ const POS: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
-    }
+    };
 
     const handleEditInvoice = (invoiceId: string) => {
         const inv = saleInvoices.find(i => i.id === invoiceId);
@@ -944,7 +957,7 @@ const POS: React.FC = () => {
                                         {isExceeded && <WarningIcon className="w-5 h-5 text-orange-500 animate-bounce" />}
                                     </div>
                                     <div className="flex justify-between items-center mt-2 pr-7">
-                                        <span className="text-[10px] font-bold text-slate-400">تراز کل: {Math.round(c.balance).toLocaleString()} AFN</span>
+                                        <span className="text-[10px] font-bold text-slate-400">تراز کل: {Math.round(c.balance).toLocaleString()} {baseCurrencyName}</span>
                                         {isExceeded && <span className="text-[10px] font-black text-orange-600 uppercase tracking-tighter">بیش از سقف اعتبار</span>}
                                     </div>
                                 </div>

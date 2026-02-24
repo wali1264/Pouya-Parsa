@@ -44,7 +44,7 @@ export const parseToPackageAndUnits = (totalStock: number, itemsPerPackage: numb
 export const formatCurrency = (amount: number, settings: StoreSettings, customCurrencyName?: string): string => {
     const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
     const formatted = safeAmount.toLocaleString('fa-IR', { maximumFractionDigits: 3 });
-    const currency = customCurrencyName || (settings && settings.currencyName) || 'AFN';
+    const currency = customCurrencyName || settings?.currencyConfigs?.[settings.baseCurrency]?.name || settings?.currencyName || 'AFN';
     return `${formatted} ${currency}`;
 };
 

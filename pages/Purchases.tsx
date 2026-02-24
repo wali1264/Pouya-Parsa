@@ -105,7 +105,7 @@ const Purchases: React.FC = () => {
     const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [items, setItems] = useState<PurchaseItemDraft[]>([]);
     const [productSearch, setProductSearch] = useState('');
-    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency || 'AFN');
     const [exchangeRate, setExchangeRate] = useState<string>('');
     const [additionalCost, setAdditionalCost] = useState<string>('');
     const [costDescription, setCostDescription] = useState<string>('');
@@ -185,7 +185,7 @@ const Purchases: React.FC = () => {
         setInvoiceDate(new Date().toISOString().split('T')[0]);
         setItems([]);
         setProductSearch('');
-        setCurrency('AFN');
+        setCurrency(storeSettings.baseCurrency || 'AFN');
         setExchangeRate('');
         setAdditionalCost('');
         setCostDescription('');
@@ -221,7 +221,7 @@ const Purchases: React.FC = () => {
             expiryDate: i.expiryDate || '',
             showExpiry: !!i.expiryDate
         })));
-        setCurrency(invoice.currency || 'AFN');
+        setCurrency(invoice.currency || storeSettings.baseCurrency || 'AFN');
         setExchangeRate(invoice.exchangeRate ? String(invoice.exchangeRate) : '');
         setAdditionalCost(invoice.additionalCost ? String(invoice.additionalCost) : '');
         setCostDescription(invoice.costDescription || '');
@@ -364,7 +364,7 @@ const Purchases: React.FC = () => {
             items: finalItems,
             timestamp: finalTimestamp,
             currency,
-            exchangeRate: currency !== 'AFN' ? Number(exchangeRate) : 1,
+            exchangeRate: currency === storeSettings.baseCurrency ? 1 : Number(exchangeRate),
             additionalCost: Number(additionalCost) || 0,
             costDescription
         };
@@ -382,9 +382,7 @@ const Purchases: React.FC = () => {
     };
 
     const getInvoiceCurrencyName = (inv: PurchaseInvoice) => {
-        if (inv.currency === 'USD') return 'دلار';
-        if (inv.currency === 'IRT') return 'تومان';
-        return 'افغانی';
+        return storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency]?.name || inv.currency || 'افغانی';
     };
 
     return (
@@ -535,14 +533,17 @@ const Purchases: React.FC = () => {
                                 <div className="flex items-center gap-4 flex-shrink-0">
                                     <span className="font-black text-blue-900 text-xs">ارز فاکتور:</span>
                                     <div className="flex items-center gap-4">
-                                        {['AFN', 'USD', 'IRT'].map(c => (
+                                        {(['AFN', 'USD', 'IRT'] as const).map(c => (
                                             <label key={c} className="flex items-center gap-2 cursor-pointer group">
                                                 <input 
                                                     type="radio" 
                                                     name="currency" 
                                                     value={c} 
                                                     checked={currency === c} 
-                                                    onChange={() => { setCurrency(c as any); setExchangeRate(''); }} 
+                                                    onChange={() => { 
+                                                        setCurrency(c); 
+                                                        if (c === storeSettings.baseCurrency) setExchangeRate(''); 
+                                                    }} 
                                                     className="hidden" 
                                                 />
                                                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${currency === c ? 'border-blue-600 bg-blue-600' : 'border-blue-200 group-hover:border-blue-400'}`}>
@@ -554,9 +555,9 @@ const Purchases: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {currency !== 'AFN' && (
+                                {currency !== storeSettings.baseCurrency && (
                                     <div className="flex items-center gap-2 flex-shrink-0 border-r border-blue-100 pr-4">
-                                        <span className="text-[10px] font-black text-slate-500">نرخ تبدیل:</span>
+                                        <span className="text-[10px] font-black text-slate-500">نرخ تبدیل ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency} به {currency}):</span>
                                         <input 
                                             name="exchangeRate"
                                             type="text" 

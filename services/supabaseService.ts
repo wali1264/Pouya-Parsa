@@ -38,7 +38,13 @@ const DEFAULT_SETTINGS: StoreSettings = {
     currencyName: 'افغانی',
     currencySymbol: 'AFN',
     packageLabel: 'بسته',
-    unitLabel: 'عدد'
+    unitLabel: 'عدد',
+    baseCurrency: 'AFN',
+    currencyConfigs: {
+        AFN: { code: 'AFN', name: 'افغانی', symbol: 'AFN', method: 'multiply' },
+        USD: { code: 'USD', name: 'دلار', symbol: '$', method: 'divide' },
+        IRT: { code: 'IRT', name: 'تومان', symbol: 'IRT', method: 'multiply' }
+    }
 };
 
 export const api = {
@@ -305,6 +311,7 @@ export const api = {
     },
 
     updatePurchase: async (invoiceId: string, newInvoiceData: PurchaseInvoice, supplierUpdate?: {id: string, newBalances: any}) => {
+        const settings = await api.getSettings();
         const oldInvoice = await db.getById<PurchaseInvoice>(db.STORES.PURCHASE_INVOICES, invoiceId);
         if (oldInvoice) {
             for (const item of oldInvoice.items) {
@@ -320,20 +327,24 @@ export const api = {
 
         const totalQty = newInvoiceData.items.reduce((s, i) => s + (i.quantity || 0), 0);
         const rate = newInvoiceData.exchangeRate || 1;
-        const additionalCostAFN = newInvoiceData.additionalCost ? (newInvoiceData.currency === 'IRT' ? newInvoiceData.additionalCost / rate : newInvoiceData.additionalCost * rate) : 0;
-        const costPerUnitAFN = totalQty > 0 ? additionalCostAFN / totalQty : 0;
+        const config = settings.currencyConfigs[newInvoiceData.currency || settings.baseCurrency];
+        
+        const additionalCostBase = newInvoiceData.additionalCost 
+            ? (newInvoiceData.currency === settings.baseCurrency ? newInvoiceData.additionalCost : (config.method === 'multiply' ? newInvoiceData.additionalCost / rate : newInvoiceData.additionalCost * rate)) 
+            : 0;
+        const costPerUnitBase = totalQty > 0 ? additionalCostBase / totalQty : 0;
 
         for (const item of newInvoiceData.items) {
             const product = await db.getById<Product>(db.STORES.PRODUCTS, item.productId);
             if (product) {
                 const bIdx = product.batches.findIndex(b => b.lotNumber === item.lotNumber);
-                const priceAFN = (newInvoiceData.currency === 'IRT' ? item.purchasePrice / rate : item.purchasePrice * rate) + costPerUnitAFN;
+                const priceBase = (newInvoiceData.currency === settings.baseCurrency ? item.purchasePrice : (config.method === 'multiply' ? item.purchasePrice / rate : item.purchasePrice * rate)) + costPerUnitBase;
                 if (bIdx !== -1) {
                     product.batches[bIdx].stock += item.quantity;
-                    product.batches[bIdx].purchasePrice = priceAFN;
+                    product.batches[bIdx].purchasePrice = priceBase;
                     product.batches[bIdx].expiryDate = item.expiryDate;
                 } else {
-                    product.batches.push({ id: crypto.randomUUID(), lotNumber: item.lotNumber, stock: item.quantity, purchasePrice: priceAFN, purchaseDate: newInvoiceData.timestamp, expiryDate: item.expiryDate });
+                    product.batches.push({ id: crypto.randomUUID(), lotNumber: item.lotNumber, stock: item.quantity, purchasePrice: priceBase, purchaseDate: newInvoiceData.timestamp, expiryDate: item.expiryDate });
                 }
                 await db.putItem(db.STORES.PRODUCTS, product);
             }

@@ -31,22 +31,26 @@ const Reports: React.FC = () => {
             return invTime >= dateRange.start.getTime() && invTime <= dateRange.end.getTime();
         });
 
-        let grossRevenueAFN = 0, returnsAmountAFN = 0, totalDiscountsGivenAFN = 0, totalCOGS = 0;
+        let grossRevenueBase = 0, returnsAmountBase = 0, totalDiscountsGivenBase = 0, totalCOGS = 0;
 
         filteredInvoices.forEach(inv => {
             const rate = inv.exchangeRate || 1;
-            const amountAFN = inv.totalAmountAFN ?? (inv.currency === 'IRT' ? (inv.totalAmount / rate) : (inv.totalAmount * rate));
+            const config = storeSettings.currencyConfigs[inv.currency];
+            const amountBase = inv.totalAmountAFN ?? (config?.method === 'multiply' ? (inv.totalAmount * rate) : (inv.totalAmount / rate));
             
             if (inv.type === 'sale') {
-                grossRevenueAFN += amountAFN;
-                if (inv.totalDiscount > 0) totalDiscountsGivenAFN += (inv.totalDiscount * rate);
+                grossRevenueBase += amountBase;
+                if (inv.totalDiscount > 0) {
+                    const discountBase = config?.method === 'multiply' ? (inv.totalDiscount * rate) : (inv.totalDiscount / rate);
+                    totalDiscountsGivenBase += discountBase;
+                }
                 inv.items.forEach(item => { 
                     if (item.type === 'product') {
                         totalCOGS += (item.purchasePrice || 0) * item.quantity; 
                     }
                 });
             } else if (inv.type === 'return') {
-                returnsAmountAFN += amountAFN;
+                returnsAmountBase += amountBase;
                 inv.items.forEach(item => { 
                     if (item.type === 'product') {
                         totalCOGS -= (item.purchasePrice || 0) * item.quantity; 
@@ -55,7 +59,7 @@ const Reports: React.FC = () => {
             }
         });
 
-        const netSales = grossRevenueAFN - returnsAmountAFN;
+        const netSales = grossRevenueBase - returnsAmountBase;
         const totalExpensesInRange = expenses.filter(exp => {
             const expTime = new Date(exp.date).getTime();
             return expTime >= dateRange.start.getTime() && expTime <= dateRange.end.getTime();
@@ -76,7 +80,7 @@ const Reports: React.FC = () => {
             }, [] as { id: string, name: string, quantity: number, totalValue: number }[])
             .sort((a, b) => b.totalValue - a.totalValue).slice(0, 10);
 
-        return { netSales, totalDiscountsGiven: totalDiscountsGivenAFN, totalExpenses: totalExpensesInRange, netIncome, topProducts, returnsAmount: returnsAmountAFN, totalCOGS };
+        return { netSales, totalDiscountsGiven: totalDiscountsGivenBase, totalExpenses: totalExpensesInRange, netIncome, topProducts, returnsAmount: returnsAmountBase, totalCOGS };
     }, [saleInvoices, expenses, dateRange]);
 
     const inventoryData = useMemo(() => {
@@ -90,35 +94,40 @@ const Reports: React.FC = () => {
     }, [products]);
 
     const supplyChainData = useMemo(() => {
-        let totalValueAFN = 0;
-        let totalPrepaymentsAFN = 0;
+        const baseCurrency = storeSettings.baseCurrency || 'AFN';
+        let totalValueBase = 0;
+        let totalPrepaymentsBase = 0;
         
         inTransitInvoices.forEach(inv => {
             const rate = inv.exchangeRate || 1;
-            const itemsValAFN = inv.items.reduce((s, it) => {
-                const priceAFN = inv.currency === 'IRT' ? it.purchasePrice / rate : it.purchasePrice * rate;
-                return s + ((it.atFactoryQty + it.inTransitQty) * priceAFN);
+            const config = storeSettings.currencyConfigs[inv.currency || baseCurrency];
+            const itemsValBase = inv.items.reduce((s, it) => {
+                const priceBase = config?.method === 'multiply' ? it.purchasePrice * rate : it.purchasePrice / rate;
+                return s + ((it.atFactoryQty + it.inTransitQty) * priceBase);
             }, 0);
-            totalValueAFN += itemsValAFN;
-            totalPrepaymentsAFN += (inv.paidAmount || 0) * rate;
+            totalValueBase += itemsValBase;
+            const prepaymentBase = config?.method === 'multiply' ? (inv.paidAmount || 0) * rate : (inv.paidAmount || 0) / rate;
+            totalPrepaymentsBase += prepaymentBase;
         });
 
-        return { totalValueAFN, totalPrepaymentsAFN, orderCount: inTransitInvoices.length };
-    }, [inTransitInvoices]);
+        return { totalValueBase, totalPrepaymentsBase, orderCount: inTransitInvoices.length };
+    }, [inTransitInvoices, storeSettings]);
 
     const depositData = useMemo(() => {
-        const totalAFN = depositHolders.reduce((s, h) => s + h.balanceAFN, 0);
+        const baseCurrency = storeSettings.baseCurrency || 'AFN';
+        const totalBase = depositHolders.reduce((s, h) => s + h.balanceAFN, 0);
         const totalUSD = depositHolders.reduce((s, h) => s + h.balanceUSD, 0);
         const totalIRT = depositHolders.reduce((s, h) => s + h.balanceIRT, 0);
         const transactionsInRange = depositTransactions.filter(t => {
             const tTime = new Date(t.date).getTime();
             return tTime >= dateRange.start.getTime() && tTime <= dateRange.end.getTime();
         });
-        return { totalAFN, totalUSD, totalIRT, txCount: transactionsInRange.length, holdersCount: depositHolders.length };
-    }, [depositHolders, depositTransactions, dateRange]);
+        return { totalBase, totalUSD, totalIRT, txCount: transactionsInRange.length, holdersCount: depositHolders.length };
+    }, [depositHolders, depositTransactions, dateRange, storeSettings]);
 
     // --- Virtual Cash Position (Liquidity) Calculation ---
     const cashPosition = useMemo(() => {
+        const baseCurrency = storeSettings.baseCurrency || 'AFN';
         const cashInSales = saleInvoices.reduce((s, i) => {
             if (i.type === 'sale' && !i.customerId) return s + i.totalAmountAFN;
             if (i.type === 'return' && !i.customerId) return s - i.totalAmountAFN;
@@ -127,30 +136,38 @@ const Reports: React.FC = () => {
 
         const cashInCollections = customerTransactions.filter(t => t.type === 'payment').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
-            const currency = (t as any).currency || 'AFN';
-            return s + (currency === 'IRT' ? t.amount / rate : t.amount * (currency === 'USD' ? rate : 1));
+            const currency = (t as any).currency || baseCurrency;
+            const config = storeSettings.currencyConfigs[currency];
+            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            return s + amountBase;
         }, 0);
 
         const cashInDeposits = depositTransactions.filter(t => t.type === 'deposit').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1; 
-            return s + (t.currency === 'IRT' ? t.amount / rate : t.amount * (t.currency === 'USD' ? rate : 1));
+            const config = storeSettings.currencyConfigs[t.currency];
+            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            return s + amountBase;
         }, 0);
 
         const cashOutSuppliers = supplierTransactions.filter(t => t.type === 'payment').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
-            const currency = (t as any).currency || 'AFN';
-            return s + (currency === 'IRT' ? t.amount / rate : t.amount * (currency === 'USD' ? rate : 1));
+            const currency = (t as any).currency || baseCurrency;
+            const config = storeSettings.currencyConfigs[currency];
+            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            return s + amountBase;
         }, 0);
 
         const cashOutExpenses = expenses.reduce((s, e) => s + e.amount, 0);
 
         const cashOutDeposits = depositTransactions.filter(t => t.type === 'withdrawal').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
-            return s + (t.currency === 'IRT' ? t.amount / rate : t.amount * (t.currency === 'USD' ? rate : 1));
+            const config = storeSettings.currencyConfigs[t.currency];
+            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            return s + amountBase;
         }, 0);
 
         return (cashInSales + cashInCollections + cashInDeposits) - (cashOutSuppliers + cashOutExpenses + cashOutDeposits);
-    }, [saleInvoices, customerTransactions, depositTransactions, supplierTransactions, expenses]);
+    }, [saleInvoices, customerTransactions, depositTransactions, supplierTransactions, expenses, storeSettings]);
 
     const financialPositionData = useMemo(() => {
         const invVal = inventoryData.totalBookValue;

@@ -115,7 +115,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
     const [errors, setErrors] = useState<{ [key: string]: string }>({});
     
     // Multi-currency purchase states
-    const [purchaseCurrency, setPurchaseCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [purchaseCurrency, setPurchaseCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency || 'AFN');
     const [purchaseExchangeRate, setPurchaseExchangeRate] = useState('');
 
     const [isListening, setIsListening] = useState(false);
@@ -244,7 +244,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
         if (!formData.name.trim()) newErrors.name = "نام محصول اجباری است";
         if (isNameDuplicate) newErrors.name = "محصولی با این نام قبلاً ثبت شده است";
         if (!formData.purchasePrice || Number(formData.purchasePrice) <= 0) newErrors.purchasePrice = "قیمت خرید نامعتبر است";
-        if (purchaseCurrency !== 'AFN' && (!purchaseExchangeRate || Number(purchaseExchangeRate) <= 0)) newErrors.purchaseExchangeRate = "نرخ ارز الزامی است";
+        if (purchaseCurrency !== storeSettings.baseCurrency && (!purchaseExchangeRate || Number(purchaseExchangeRate) <= 0)) newErrors.purchaseExchangeRate = "نرخ ارز الزامی است";
         if (!formData.salePrice || Number(formData.salePrice) <= 0) newErrors.salePrice = "قیمت فروش نامعتبر است";
         if (!formData.lotNumber.trim()) newErrors.lotNumber = "شماره لات اجباری است";
         
@@ -259,24 +259,27 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (validate()) {
-            const exchangeRateValue = (purchaseCurrency === 'AFN' || product) ? 1 : Number(purchaseExchangeRate);
-            const finalPurchasePriceAFN = purchaseCurrency === 'IRT' 
-                ? Number(formData.purchasePrice) / exchangeRateValue 
-                : Number(formData.purchasePrice) * exchangeRateValue;
+            const baseCurrency = storeSettings.baseCurrency || 'AFN';
+            const config = storeSettings.currencyConfigs[purchaseCurrency];
+            const exchangeRateValue = (purchaseCurrency === baseCurrency || product) ? 1 : Number(purchaseExchangeRate);
+            
+            const finalPurchasePriceBase = purchaseCurrency === baseCurrency 
+                ? Number(formData.purchasePrice)
+                : (config.method === 'multiply' ? Number(formData.purchasePrice) * exchangeRateValue : Number(formData.purchasePrice) / exchangeRateValue);
 
-            const finalSalePriceAFN = purchaseCurrency === 'IRT'
-                ? Number(formData.salePrice) / exchangeRateValue
-                : Number(formData.salePrice) * exchangeRateValue;
+            const finalSalePriceBase = purchaseCurrency === baseCurrency
+                ? Number(formData.salePrice)
+                : (config.method === 'multiply' ? Number(formData.salePrice) * exchangeRateValue : Number(formData.salePrice) / exchangeRateValue);
 
             const productData: ProductFormData = {
                 name: formData.name.trim(),
-                salePrice: finalSalePriceAFN, 
+                salePrice: finalSalePriceBase, 
                 itemsPerPackage: formData.itemsPerPackage ? Number(formData.itemsPerPackage) : 1,
                 barcode: formData.barcode?.trim() || undefined,
                 manufacturer: formData.manufacturer?.trim() || undefined,
             };
             const firstBatchData: FirstBatchData = {
-                purchasePrice: finalPurchasePriceAFN,
+                purchasePrice: finalPurchasePriceBase,
                 stock: Number(formData.stock),
                 lotNumber: formData.lotNumber.trim(),
                 purchaseDate: new Date().toISOString(),
@@ -353,11 +356,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                             <div className="flex justify-between items-center mb-2">
                                 <label className="block text-md font-semibold text-slate-700">قیمت خرید ({purchaseCurrency})</label>
                                 <div className="flex gap-1.5 bg-slate-100 p-0.5 rounded-lg border">
-                                    {['AFN', 'USD', 'IRT'].map(cur => (
+                                    {(['AFN', 'USD', 'IRT'] as const).map(cur => (
                                         <button 
                                             key={cur}
                                             type="button"
-                                            onClick={() => { setPurchaseCurrency(cur as any); setPurchaseExchangeRate(''); }}
+                                            onClick={() => { 
+                                                setPurchaseCurrency(cur); 
+                                                if (cur === storeSettings.baseCurrency) setPurchaseExchangeRate(''); 
+                                            }}
                                             className={`px-2 py-0.5 text-[10px] font-black rounded ${purchaseCurrency === cur ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                                             disabled={!!product}
                                         >
@@ -378,7 +384,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                                     className={`flex-grow p-3 bg-white/80 border ${errors.purchasePrice ? 'border-red-500 ring-2 ring-red-50' : 'border-slate-300/80'} rounded-lg shadow-sm focus:ring-0 transition-all placeholder:text-slate-400 font-bold text-center form-input`}
                                     disabled={!!product}
                                 />
-                                {purchaseCurrency !== 'AFN' && !product && (
+                                {purchaseCurrency !== storeSettings.baseCurrency && !product && (
                                     <div className="w-24">
                                         <input 
                                             name="purchaseExchangeRate" 
@@ -387,7 +393,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                                             value={purchaseExchangeRate} 
                                             onChange={handleInputChange} 
                                             placeholder="نرخ" 
-                                            title="نرخ هر افغانی به ارز انتخابی"
+                                            title={`نرخ هر ${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency} به ارز انتخابی`}
                                             className={`w-full h-full p-2 bg-blue-50 border-2 border-blue-200 rounded-lg text-center font-mono font-black focus:border-blue-500 outline-none ${errors.purchaseExchangeRate ? 'border-red-500' : ''}`}
                                         />
                                     </div>

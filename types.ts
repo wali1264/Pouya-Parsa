@@ -201,16 +201,29 @@ export interface SalesMemoImage {
 }
 
 // --- Settings Module Types ---
+export interface CurrencyConfig {
+    code: 'AFN' | 'USD' | 'IRT';
+    name: string;
+    symbol: string;
+    method: 'multiply' | 'divide'; // 'multiply' for weaker currencies (Base * Rate), 'divide' for stronger (Base / Rate)
+}
+
 export interface StoreSettings {
     storeName: string;
     address: string;
     phone: string;
     lowStockThreshold: number;
     expiryThresholdMonths: number;
-    currencyName: string; // e.g., 'افغانی'
-    currencySymbol: string; // e.g., 'AFN'
-    packageLabel?: string; // Optional for Phase 1 Migration
-    unitLabel?: string;    // Optional for Phase 1 Migration
+    currencyName: string; // Legacy support
+    currencySymbol: string; // Legacy support
+    packageLabel?: string;
+    unitLabel?: string;
+    baseCurrency: 'AFN' | 'USD' | 'IRT';
+    currencyConfigs: {
+        AFN: CurrencyConfig;
+        USD: CurrencyConfig;
+        IRT: CurrencyConfig;
+    };
 }
 
 // --- Package/Unit Management ---
