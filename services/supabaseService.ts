@@ -44,7 +44,8 @@ const DEFAULT_SETTINGS: StoreSettings = {
         AFN: { code: 'AFN', name: 'افغانی', symbol: 'AFN', method: 'multiply' },
         USD: { code: 'USD', name: 'دلار', symbol: '$', method: 'divide' },
         IRT: { code: 'IRT', name: 'تومان', symbol: 'IRT', method: 'multiply' }
-    }
+    },
+    expenseCategories: ['rent', 'utilities', 'supplies', 'salary', 'other']
 };
 
 export const api = {
@@ -191,8 +192,15 @@ export const api = {
     },
     updateSupplier: async (s: Supplier) => db.putItem(db.STORES.SUPPLIERS, s),
     deleteSupplier: async (id: string) => db.deleteItem(db.STORES.SUPPLIERS, id),
-    addEmployee: async (e: any) => { const id = crypto.randomUUID(); const item = { ...e, id, balance: 0 }; await db.putItem(db.STORES.EMPLOYEES, item); return item; },
+    addEmployee: async (e: any) => { 
+        const id = crypto.randomUUID(); 
+        const item = { ...e, id, balance: 0, balanceAFN: 0, balanceUSD: 0, balanceIRT: 0 }; 
+        await db.putItem(db.STORES.EMPLOYEES, item); 
+        return item; 
+    },
     addExpense: async (e: any) => { const id = crypto.randomUUID(); const item = { ...e, id }; await db.putItem(db.STORES.EXPENSES, item); return item; },
+    updateExpense: async (e: Expense) => db.putItem(db.STORES.EXPENSES, e),
+    deleteExpense: async (id: string) => db.deleteItem(db.STORES.EXPENSES, id),
 
     // --- SECURITY DEPOSITS (LOCAL) ---
     addDepositHolder: async (holder: Omit<DepositHolder, 'id' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => {
@@ -392,17 +400,27 @@ export const api = {
         const txStore = entityType === 'customer' ? db.STORES.CUSTOMER_TX : (entityType === 'supplier' ? db.STORES.SUPPLIER_TX : db.STORES.PAYROLL_TX);
         const entity = await db.getById<any>(store, entityId);
         if (entity) {
-            if (entityType === 'supplier' || entityType === 'customer') {
-                await db.putItem(store, { ...entity, balanceAFN: newBalance.AFN, balanceUSD: newBalance.USD, balanceIRT: newBalance.IRT, balance: newBalance.Total });
-            } else await db.putItem(store, { ...entity, balance: newBalance });
+            await db.putItem(store, { 
+                ...entity, 
+                balanceAFN: newBalance.AFN, 
+                balanceUSD: newBalance.USD, 
+                balanceIRT: newBalance.IRT, 
+                balance: newBalance.Total 
+            });
             await db.putItem(txStore, transaction);
         }
     },
 
-    processPayroll: async (updates: {id: string, balance: 0}[], transactions: PayrollTransaction[], expense: Expense) => {
+    processPayroll: async (updates: {id: string, newBalances: any}[], transactions: PayrollTransaction[], expense: Expense) => {
         for (const u of updates) {
             const emp = await db.getById<Employee>(db.STORES.EMPLOYEES, u.id);
-            if (emp) await db.putItem(db.STORES.EMPLOYEES, { ...emp, balance: 0 });
+            if (emp) await db.putItem(db.STORES.EMPLOYEES, { 
+                ...emp, 
+                balanceAFN: u.newBalances.AFN, 
+                balanceUSD: u.newBalances.USD, 
+                balanceIRT: u.newBalances.IRT, 
+                balance: u.newBalances.Total 
+            });
         }
         for (const tx of transactions) await db.putItem(db.STORES.PAYROLL_TX, tx);
         await db.putItem(db.STORES.EXPENSES, expense);

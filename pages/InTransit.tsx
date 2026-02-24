@@ -267,30 +267,34 @@ const InTransitMovementModal: React.FC<{
                     </div>
                 </div>
 
-                {/* Additional Cost Section */}
-                <div className="mt-4 mb-6 grid grid-cols-12 gap-4 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                    <div className="col-span-8">
-                        <label className="block text-[10px] font-black text-blue-800 mb-1 mr-1">توضیحات هزینه (اختیاری)</label>
-                        <input 
-                            type="text" 
-                            className="w-full bg-white border-2 border-blue-100 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-blue-500 transition-all"
-                            placeholder="مثلاً: هزینه باربری، گمرک و غیره"
-                            value={costDescription}
-                            onChange={e => setCostDescription(e.target.value)}
-                        />
+                {/* Additional Cost Section - Only show if any item is being received */}
+                {Object.values(movements).some((m: any) => m.toReceived > 0) && (
+                    <div className="mt-4 mb-6 pt-6 border-t border-slate-100 animate-fade-in">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 mb-1 mr-1">مبلغ هزینه اضافه ({invoice?.currency})</label>
+                                <input 
+                                    type="text" 
+                                    inputMode="decimal"
+                                    className="w-full p-3 bg-white border-2 border-slate-100 rounded-xl text-lg font-black text-blue-600 text-center focus:outline-none focus:border-emerald-500 transition-all"
+                                    placeholder="0"
+                                    value={additionalCost}
+                                    onChange={e => setAdditionalCost(toEnglishDigits(e.target.value))}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 mb-1 mr-1">توضیحات هزینه (اختیاری)</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full p-3 bg-white border-2 border-slate-100 rounded-xl text-sm font-bold focus:outline-none focus:border-emerald-500 transition-all"
+                                    placeholder="مثلاً: هزینه باربری، گمرک و غیره"
+                                    value={costDescription}
+                                    onChange={e => setCostDescription(e.target.value)}
+                                />
+                            </div>
+                        </div>
                     </div>
-                    <div className="col-span-4">
-                        <label className="block text-[10px] font-black text-blue-800 mb-1 mr-1">مبلغ هزینه اضافه ({invoice?.currency})</label>
-                        <input 
-                            type="text" 
-                            inputMode="decimal"
-                            className="w-full bg-white border-2 border-blue-100 rounded-xl px-4 py-3 text-lg font-black text-blue-600 text-center focus:outline-none focus:border-blue-500 transition-all"
-                            placeholder="0"
-                            value={additionalCost}
-                            onChange={e => setAdditionalCost(toEnglishDigits(e.target.value))}
-                        />
-                    </div>
-                </div>
+                )}
 
                 <div className="mt-auto pt-6 border-t flex flex-col md:flex-row gap-4">
                     <button onClick={onClose} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black active:scale-95 transition-transform">لغو و بازگشت</button>

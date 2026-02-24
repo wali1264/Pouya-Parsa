@@ -84,11 +84,13 @@ interface AppContextType extends AppState {
     deleteCustomer: (id: string) => void;
     addCustomerPayment: (customerId: string, amount: number, description: string, currency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number, trusteeId?: string) => Promise<CustomerTransaction | null>;
     
-    addEmployee: (employee: Omit<Employee, 'id'|'balance'>) => void;
-    addEmployeeAdvance: (employeeId: string, amount: number, description: string) => void;
+    addEmployee: (employee: Omit<Employee, 'id'|'balance'|'balanceAFN'|'balanceUSD'|'balanceIRT'>) => void;
+    addEmployeeAdvance: (employeeId: string, amount: number, description: string, currency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number) => void;
     processAndPaySalaries: () => { success: boolean; message: string };
-    addEmployeeAdvanceToEmployee: (employeeId: string, amount: number, description: string) => void;
+    addEmployeeAdvanceToEmployee: (employeeId: string, amount: number, description: string, currency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number) => void;
     addExpense: (expense: Omit<Expense, 'id'>) => void;
+    updateExpense: (expense: Expense) => void;
+    deleteExpense: (id: string) => void;
 
     // Security Deposits
     addDepositHolder: (holder: Omit<DepositHolder, 'id' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => Promise<void>;
@@ -122,7 +124,8 @@ const getDefaultState = (): AppState => {
                 AFN: { code: 'AFN', name: 'افغانی', symbol: 'AFN', method: 'multiply' },
                 USD: { code: 'USD', name: 'دلار', symbol: 'USD', method: 'divide' },
                 IRT: { code: 'IRT', name: 'تومان', symbol: 'IRT', method: 'multiply' }
-            }
+            },
+            expenseCategories: ['rent', 'utilities', 'supplies', 'salary', 'other']
         },
         cart: [], customerTransactions: [], supplierTransactions: [], payrollTransactions: [],
         activities: [], saleInvoiceCounter: 0, editingSaleInvoiceId: null, editingPurchaseInvoiceId: null,
@@ -224,6 +227,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
                 if (!mergedSettings.baseCurrency) {
                     mergedSettings.baseCurrency = prev.storeSettings.baseCurrency;
+                }
+                if (!mergedSettings.expenseCategories || mergedSettings.expenseCategories.length === 0) {
+                    mergedSettings.expenseCategories = prev.storeSettings.expenseCategories;
                 }
 
                 return {
@@ -710,12 +716,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ? totalCurrencyAmount 
             : (config.method === 'multiply' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate);
         
-        // Calculate additional cost per unit in base currency
-        const totalQty = data.items.reduce((s: number, i: any) => s + i.quantity, 0);
+        // Calculate additional cost distribution in base currency
         const additionalCostBase = data.additionalCost 
             ? (data.currency === state.storeSettings.baseCurrency ? data.additionalCost : (config.method === 'multiply' ? data.additionalCost / rate : data.additionalCost * rate)) 
             : 0;
-        const costPerUnitBase = totalQty > 0 ? additionalCostBase / totalQty : 0;
+        
+        // Proportional distribution by value
+        const totalInvoiceValueBase = data.items.reduce((s: number, it: any) => {
+            const itemPriceBase = (data.currency === state.storeSettings.baseCurrency ? it.purchasePrice : (config.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate));
+            return s + (itemPriceBase * it.quantity);
+        }, 0);
 
         const purchaseItems: PurchaseInvoiceItem[] = data.items.map((it: any) => ({
             ...it,
@@ -737,18 +747,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             transaction: { id: crypto.randomUUID(), supplierId: data.supplierId, type: 'purchase', amount: totalCurrencyAmount, date: data.timestamp, description: `خرید فاکتور #${data.invoiceNumber || id}`, invoiceId: id, currency: data.currency } as SupplierTransaction
         };
 
-        const newBatches = data.items.map((it: any) => ({
-            id: crypto.randomUUID(),
-            productId: it.productId,
-            lotNumber: it.lotNumber,
-            stock: it.quantity,
-            purchasePrice: (data.currency === state.storeSettings.baseCurrency ? it.purchasePrice : (config.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate)) + costPerUnitBase,
-            purchaseDate: data.timestamp,
-            expiryDate: it.expiryDate
-        }));
+        const newBatches = data.items.map((it: any) => {
+            const itemPriceBase = (data.currency === state.storeSettings.baseCurrency ? it.purchasePrice : (config.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate));
+            const itemTotalValueBase = itemPriceBase * it.quantity;
+            const shareOfCostBase = totalInvoiceValueBase > 0 ? (additionalCostBase * (itemTotalValueBase / totalInvoiceValueBase)) : 0;
+            const costPerUnitBase = it.quantity > 0 ? (shareOfCostBase / it.quantity) : 0;
+
+            return {
+                id: crypto.randomUUID(),
+                productId: it.productId,
+                lotNumber: it.lotNumber,
+                stock: it.quantity,
+                purchasePrice: itemPriceBase + costPerUnitBase,
+                purchaseDate: data.timestamp,
+                expiryDate: it.expiryDate
+            };
+        });
 
         try {
             await api.createPurchase(invoice, supplierUpdate, newBatches);
+            
+            // Automatically record as expense if there's additional cost
+            if (data.additionalCost > 0) {
+                const expense: Omit<Expense, 'id'> = {
+                    category: 'logistics',
+                    description: `هزینه جانبی فاکتور خرید #${data.invoiceNumber || id}: ${data.costDescription || 'بدون توضیح'}`,
+                    amount: data.additionalCost,
+                    currency: data.currency || state.storeSettings.baseCurrency,
+                    exchangeRate: rate,
+                    date: data.timestamp,
+                    relatedId: id
+                };
+                await addExpense(expense);
+            }
+
             await fetchData(true);
             logActivity('purchase', `خرید جدید ثبت شد: ${id}`, id, 'purchaseInvoice');
             return { success: true, message: 'خرید با موفقیت ثبت و به انبار اضافه شد.' };
@@ -817,6 +849,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         try {
             await api.updatePurchase(editingPurchaseInvoiceId, newInvoice, supplierUpdate);
+            
+            // Sync automated expense
+            const existingExpense = state.expenses.find(ex => ex.relatedId === editingPurchaseInvoiceId);
+            if (invoiceData.additionalCost > 0) {
+                const expenseData = {
+                    category: 'logistics',
+                    description: `هزینه جانبی فاکتور خرید #${invoiceData.invoiceNumber || editingPurchaseInvoiceId}: ${invoiceData.costDescription || 'بدون توضیح'}`,
+                    amount: invoiceData.additionalCost,
+                    currency: invoiceData.currency || state.storeSettings.baseCurrency,
+                    exchangeRate: rate,
+                    date: invoiceData.timestamp || new Date().toISOString(),
+                    relatedId: editingPurchaseInvoiceId
+                };
+                if (existingExpense) {
+                    updateExpense({ ...existingExpense, ...expenseData });
+                } else {
+                    addExpense(expenseData);
+                }
+            } else if (existingExpense) {
+                deleteExpense(existingExpense.id);
+            }
+
             await fetchData(true);
             setState(prev => ({ ...prev, editingPurchaseInvoiceId: null }));
             logActivity('purchase', `ویرایش فاکتور خرید: ${newInvoice.id}`, newInvoice.id, 'purchaseInvoice');
@@ -1082,42 +1136,105 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const addEmployee = (e: any) => { api.addEmployee(e).then(() => fetchData(true)); };
 
     // FIX: Optimized and connected to Expenses for Reports/Capital integration
-    const addEmployeeAdvance = async (eid: string, a: number, d: string) => {
+    const addEmployeeAdvance = async (eid: string, a: number, d: string, cur: 'AFN' | 'USD' | 'IRT' = 'AFN', rate: number = 1) => {
         const emp = state.employees.find(x => x.id === eid);
         if (!emp) return;
         const now = new Date().toISOString();
-        const tx: PayrollTransaction = { id: crypto.randomUUID(), employeeId: eid, type: 'advance', amount: a, date: now, description: d };
+        const tx: PayrollTransaction = { id: crypto.randomUUID(), employeeId: eid, type: 'advance', amount: a, currency: cur, exchangeRate: rate, date: now, description: d };
         
+        const config = state.storeSettings.currencyConfigs[cur];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
+
         // Auto-log to Expenses to ensure reports are accurate
         const expense: Expense = { 
             id: crypto.randomUUID(), 
             category: 'salary', 
             amount: a, 
+            currency: cur,
+            exchangeRate: rate,
+            amountBase: baseAmount,
             description: `مساعده/تسویه میان‌دوره به ${emp.name}: ${d}`, 
             date: now 
         };
 
-        await api.processPayment('employee', eid, emp.balance + a, tx);
+        const newBalances = {
+            AFN: emp.balanceAFN + (cur === 'AFN' ? a : 0),
+            USD: emp.balanceUSD + (cur === 'USD' ? a : 0),
+            IRT: emp.balanceIRT + (cur === 'IRT' ? a : 0),
+            Total: emp.balance + baseAmount
+        };
+
+        await api.processPayment('employee', eid, newBalances, tx);
         await api.addExpense(expense);
         await fetchData(true);
-        const baseCurrencyName = state.storeSettings.currencyConfigs[state.storeSettings.baseCurrency]?.name || 'AFN';
-        logActivity('payroll', `ثبت مساعده/تسویه برای ${emp.name}: ${a.toLocaleString()} ${baseCurrencyName}`);
+        const currencyName = state.storeSettings.currencyConfigs[cur]?.name || cur;
+        logActivity('payroll', `ثبت مساعده/تسویه برای ${emp.name}: ${a.toLocaleString()} ${currencyName}`);
     };
 
     const processAndPaySalaries = () => {
         const txs: PayrollTransaction[] = [];
-        const updates = state.employees.map(e => {
-            const net = e.monthlySalary - e.balance;
-            if (net > 0) txs.push({ id: crypto.randomUUID(), employeeId: e.id, type: 'salary_payment', amount: net, date: new Date().toISOString(), description: 'تسویه حقوق ماهانه' });
-            return { id: e.id, balance: 0 as const };
+        const updates: {id: string, newBalances: any}[] = [];
+        
+        state.employees.forEach(e => {
+            // Salary is usually in base currency
+            const netBase = e.monthlySalary - e.balance;
+            if (netBase > 0) {
+                txs.push({ 
+                    id: crypto.randomUUID(), 
+                    employeeId: e.id, 
+                    type: 'salary_payment', 
+                    amount: netBase, 
+                    currency: state.storeSettings.baseCurrency,
+                    exchangeRate: 1,
+                    date: new Date().toISOString(), 
+                    description: 'تسویه حقوق ماهانه' 
+                });
+            }
+            updates.push({ 
+                id: e.id, 
+                newBalances: { AFN: 0, USD: 0, IRT: 0, Total: 0 } 
+            });
         });
-        const totalPaid = txs.reduce((s,t) => s+t.amount, 0);
-        const expense: Expense = { id: crypto.randomUUID(), category: 'salary', amount: totalPaid, description: 'پرداخت حقوق کارکنان (تسویه نهایی)', date: new Date().toISOString() };
+
+        const totalPaidBase = txs.reduce((s,t) => s + t.amount, 0);
+        const expense: Expense = { 
+            id: crypto.randomUUID(), 
+            category: 'salary', 
+            amount: totalPaidBase, 
+            currency: state.storeSettings.baseCurrency,
+            exchangeRate: 1,
+            amountBase: totalPaidBase,
+            description: 'پرداخت حقوق کارکنان (تسویه نهایی)', 
+            date: new Date().toISOString() 
+        };
+
         api.processPayroll(updates, txs, expense).then(() => fetchData(true));
         return { success: true, message: 'حقوق تمام کارکنان تسویه و در مصارف ثبت شد.' };
     };
 
-    const addExpense = (e: any) => { api.addExpense(e).then(() => fetchData(true)); };
+    const addExpense = (e: any) => { 
+        const rate = e.exchangeRate || 1;
+        const cur = e.currency || state.storeSettings.baseCurrency;
+        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? e.amount : (config.method === 'multiply' ? e.amount / rate : e.amount * rate);
+        
+        const finalExpense = { ...e, amountBase: baseAmount };
+        api.addExpense(finalExpense).then(() => fetchData(true)); 
+    };
+
+    const updateExpense = (e: Expense) => {
+        const rate = e.exchangeRate || 1;
+        const cur = e.currency || state.storeSettings.baseCurrency;
+        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? e.amount : (config.method === 'multiply' ? e.amount / rate : e.amount * rate);
+        
+        const finalExpense = { ...e, amountBase: baseAmount };
+        api.updateExpense(finalExpense).then(() => fetchData(true));
+    };
+
+    const deleteExpense = (id: string) => {
+        api.deleteExpense(id).then(() => fetchData(true));
+    };
     const addDepositHolder = async (h: any) => { await api.addDepositHolder(h); await fetchData(true); };
     const deleteDepositHolder = async (id: string) => { await api.deleteDepositHolder(id); await fetchData(true); };
     const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string) => {
@@ -1137,7 +1254,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const setInvoiceTransientCustomer = async (id: string, n: string) => {};
     const updateInTransitInvoice = (d: any) => { api.updateInTransit(d as any).then(() => fetchData(true)); return { success: true, message: 'بروزرسانی شد' }; };
     const deleteInTransitInvoice = (id: string) => { api.deleteInTransit(id).then(() => fetchData(true)); };
-    const addEmployeeAdvanceToEmployee = (eid: string, a: number, d: string) => { addEmployeeAdvance(eid, a, d); };
+    const addEmployeeAdvanceToEmployee = (eid: string, a: number, d: string, cur?: any, rate?: number) => { addEmployeeAdvance(eid, a, d, cur, rate); };
 
     if (isLoading) return <div className="flex items-center justify-center h-screen text-xl font-bold text-blue-600">در حال دریافت اطلاعات...</div>;
 
@@ -1148,7 +1265,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         beginEditSale, cancelEditSale, addSaleReturn, addPurchaseInvoice, beginEditPurchase, cancelEditPurchase, updatePurchaseInvoice, addPurchaseReturn,
         addInTransitInvoice, updateInTransitInvoice, deleteInTransitInvoice, archiveInTransitInvoice, moveInTransitItems, addInTransitPayment,
         updateSettings, addService, deleteService, addSupplier, deleteSupplier, addSupplierPayment, addCustomer, deleteCustomer, addCustomerPayment,
-        addEmployee, addEmployeeAdvance, addEmployeeAdvanceToEmployee, processAndPaySalaries, addExpense, setInvoiceTransientCustomer,
+        addEmployee, addEmployeeAdvance, addEmployeeAdvanceToEmployee, processAndPaySalaries, addExpense, updateExpense, deleteExpense, setInvoiceTransientCustomer,
         addDepositHolder, deleteDepositHolder, processDepositTransaction
     }}>{children}</AppContext.Provider>;
 };

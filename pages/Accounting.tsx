@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAppContext } from '../AppContext';
 import type { Supplier, Employee, Customer, Expense, AnyTransaction, CustomerTransaction, SupplierTransaction, PayrollTransaction, DepositHolder } from '../types';
-import { PlusIcon, XIcon, EyeIcon, TrashIcon, UserGroupIcon, AccountingIcon, TruckIcon, ChevronDownIcon, CheckIcon } from '../components/icons';
+import { PlusIcon, XIcon, EyeIcon, TrashIcon, UserGroupIcon, AccountingIcon, TruckIcon, ChevronDownIcon, CheckIcon, EditIcon, FilterIcon, SettingsIcon } from '../components/icons';
 import Toast from '../components/Toast';
 import { formatCurrency, toEnglishDigits } from '../utils/formatters';
 import TransactionHistoryModal from '../components/TransactionHistoryModal';
@@ -249,14 +249,22 @@ const PayrollTab = () => {
     const handleAddEmployeeForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
+        const basic = Number(toEnglishDigits(formData.get('basicSalary') as string).replace(/[^0-9.]/g, ''));
+        const benefits = Number(toEnglishDigits(formData.get('otherBenefits') as string).replace(/[^0-9.]/g, ''));
+        
         addEmployee({
             name: formData.get('name') as string,
             position: formData.get('position') as string,
-            monthlySalary: Number(toEnglishDigits(formData.get('salary') as string).replace(/[^0-9.]/g, '')),
+            basicSalary: basic,
+            otherBenefits: benefits,
+            monthlySalary: basic + benefits,
         });
         setIsModalOpen(false);
     };
     
+    const [advanceCurrency, setAdvanceCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency);
+    const [advanceRate, setAdvanceRate] = useState('');
+
     const handleAddAdvanceForm = (ev: React.FormEvent<HTMLFormElement>, employeeId: string) => {
         ev.preventDefault();
         const formData = new FormData(ev.currentTarget);
@@ -264,8 +272,15 @@ const PayrollTab = () => {
         const description = formData.get('description') as string || 'مساعده';
         
         if (!amount || amount <= 0) return;
-        addEmployeeAdvance(employeeId, amount, description);
+        
+        if (advanceCurrency !== storeSettings.baseCurrency && (!advanceRate || Number(advanceRate) <= 0)) {
+            showToast("لطفا نرخ ارز را وارد کنید.");
+            return;
+        }
+
+        addEmployeeAdvance(employeeId, amount, description, advanceCurrency, advanceCurrency === storeSettings.baseCurrency ? 1 : Number(advanceRate));
         (ev.target as HTMLFormElement).reset();
+        setAdvanceRate('');
         showToast("تراکنش با موفقیت ثبت شد.");
     };
 
@@ -298,10 +313,11 @@ const PayrollTab = () => {
                     <thead className="bg-slate-50">
                         <tr>
                             <th className="p-4 font-bold text-slate-700"></th>
-                            <th className="p-4 font-bold text-slate-700">نام کارمند</th>
+                            <th className="p-4 font-bold text-slate-700 text-right">نام کارمند</th>
                             <th className="p-4 font-bold text-slate-700">حقوق ماهانه</th>
-                            <th className="p-4 font-bold text-slate-700">پیش‌پرداخت‌ها</th>
-                             <th className="p-4 font-bold text-slate-700">مانده حقوق</th>
+                            <th className="p-4 font-bold text-slate-700">مانده (افغانی)</th>
+                            <th className="p-4 font-bold text-slate-700">مانده (دلار)</th>
+                            <th className="p-4 font-bold text-slate-700">مانده (تومان)</th>
                             <th className="p-4 font-bold text-slate-700">ثبت مساعده / پاداش</th>
                         </tr>
                     </thead>
@@ -311,15 +327,26 @@ const PayrollTab = () => {
                                 <td className="p-4">
                                     <button onClick={() => handleViewHistory(e)} className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-100 transition-all"><EyeIcon className="w-6 h-6"/></button>
                                 </td>
-                                <td className="p-4 text-lg font-bold text-slate-800">{e.name}</td>
-                                <td className="p-4 text-md text-slate-600">{formatCurrency(e.monthlySalary, storeSettings)}</td>
-                                <td className="p-4 text-md font-bold text-red-500">{formatCurrency(e.balance, storeSettings)}</td>
-                                <td className="p-4 text-lg font-black text-emerald-600">{formatCurrency(e.monthlySalary - e.balance, storeSettings)}</td>
+                                <td className="p-4 text-lg font-bold text-slate-800 text-right">{e.name}</td>
+                                <td className="p-4 text-md text-slate-600 font-bold">{formatCurrency(e.monthlySalary, storeSettings)}</td>
+                                <td className="p-4 text-md font-bold text-red-500">{e.balanceAFN.toLocaleString()}</td>
+                                <td className="p-4 text-md font-bold text-blue-500">{e.balanceUSD.toLocaleString()}</td>
+                                <td className="p-4 text-md font-bold text-orange-500">{e.balanceIRT.toLocaleString()}</td>
                                 <td className="p-4">
-                                    <form onSubmit={(ev) => handleAddAdvanceForm(ev, e.id)} className="flex justify-center items-center gap-2 w-full max-w-sm">
-                                        <input type="text" inputMode="decimal" name="amount" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} className="w-24 p-2 border border-slate-200 rounded-xl text-center font-bold focus:ring-2 focus:ring-amber-500 outline-none" placeholder="مبلغ" required />
-                                        <input type="text" name="description" className="flex-grow p-2 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none" placeholder="توضیحات (اختیاری)" />
-                                        <button type="submit" className="bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-black shadow-md hover:shadow-amber-100 transition-all active:scale-95">ثبت</button>
+                                    <form onSubmit={(ev) => handleAddAdvanceForm(ev, e.id)} className="flex flex-col gap-2 w-full max-w-sm mx-auto">
+                                        <div className="flex gap-2">
+                                            <select value={advanceCurrency} onChange={(e) => setAdvanceCurrency(e.target.value as any)} className="p-2 border border-slate-200 rounded-xl text-xs font-bold bg-white">
+                                                {['AFN', 'USD', 'IRT'].map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                            <input type="text" inputMode="decimal" name="amount" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} className="flex-grow p-2 border border-slate-200 rounded-xl text-center font-bold focus:ring-2 focus:ring-amber-500 outline-none" placeholder="مبلغ" required />
+                                        </div>
+                                        {advanceCurrency !== storeSettings.baseCurrency && (
+                                            <input type="text" inputMode="decimal" value={advanceRate} onChange={e => setAdvanceRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} className="w-full p-2 border border-slate-200 rounded-xl text-center text-xs font-mono" placeholder={`نرخ تبدیل (${storeSettings.currencyConfigs[storeSettings.baseCurrency].name} به ${advanceCurrency})`} required />
+                                        )}
+                                        <div className="flex gap-2">
+                                            <input type="text" name="description" className="flex-grow p-2 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none" placeholder="توضیحات (اختیاری)" />
+                                            <button type="submit" className="bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-black shadow-md hover:shadow-amber-100 transition-all active:scale-95">ثبت</button>
+                                        </div>
                                     </form>
                                 </td>
                             </tr>
@@ -370,7 +397,10 @@ const PayrollTab = () => {
                     <form onSubmit={handleAddEmployeeForm} className="space-y-4">
                         <input name="name" placeholder="نام کامل" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" required />
                         <input name="position" placeholder="موقعیت شغلی (مثلاً فروشنده)" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" />
-                        <input name="salary" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} placeholder={`حقوق ماهانه (${storeSettings.currencyName})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold" required />
+                        <div className="grid grid-cols-2 gap-4">
+                            <input name="basicSalary" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} placeholder="حقوق پایه" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold" required />
+                            <input name="otherBenefits" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} placeholder="سایر مزایا" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold" defaultValue="0" />
+                        </div>
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg">ذخیره کارمند</button>
                     </form>
                 </Modal>
@@ -626,18 +656,23 @@ const CustomersTab = () => {
                         <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 space-y-4">
                             <p className="text-sm font-black text-blue-800">تراز اول دوره (اختیاری)</p>
                             <div className="flex gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" checked={addCustomerCurrency === baseCurrency} onChange={() => {setAddCustomerCurrency(baseCurrency as any); setAddCustomerRate('');}} className="text-blue-600" />
-                                    <span className="text-sm font-bold text-slate-700">{baseCurrencyName}</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" checked={addCustomerCurrency === 'USD'} onChange={() => setAddCustomerCurrency('USD')} className="text-green-600" />
-                                    <span className="text-sm font-bold text-slate-700">دلار</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" checked={addCustomerCurrency === 'IRT'} onChange={() => setAddCustomerCurrency('IRT')} className="text-orange-600" />
-                                    <span className="text-sm font-bold text-slate-700">تومان</span>
-                                </label>
+                                {['AFN', 'USD', 'IRT'].map(cur => {
+                                    const isBase = cur === baseCurrency;
+                                    const label = storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'].name;
+                                    const color = cur === 'USD' ? 'text-green-600' : (cur === 'IRT' ? 'text-orange-600' : 'text-blue-600');
+                                    
+                                    return (
+                                        <label key={cur} className="flex items-center gap-2 cursor-pointer group">
+                                            <input 
+                                                type="radio" 
+                                                checked={addCustomerCurrency === cur} 
+                                                onChange={() => {setAddCustomerCurrency(cur as any); setAddCustomerRate('');}} 
+                                                className={color} 
+                                            />
+                                            <span className={`text-sm font-bold ${color}`}>{label}</span>
+                                        </label>
+                                    );
+                                })}
                             </div>
                             {addCustomerCurrency !== baseCurrency && (
                                 <div className="flex items-center gap-3">
@@ -718,28 +753,26 @@ const CustomersTab = () => {
                             </div>
                         )}
                         <div className="flex gap-4 p-3 bg-blue-50 rounded-xl">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" checked={paymentCurrency === 'AFN'} onChange={() => {setPaymentCurrency('AFN'); setExchangeRate('');}} className="text-blue-600" />
-                                <span className="text-xs font-bold">افغانی</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" checked={paymentCurrency === 'USD'} onChange={() => setPaymentCurrency('USD')} className="text-green-600" />
-                                <span className="text-xs font-bold">دلار</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" checked={paymentCurrency === 'IRT'} onChange={() => setPaymentCurrency('IRT')} className="text-orange-600" />
-                                <span className="text-xs font-bold">تومان</span>
-                            </label>
+                            {['AFN', 'USD', 'IRT'].map(c => {
+                                const label = storeSettings.currencyConfigs[c as 'AFN'|'USD'|'IRT'].name;
+                                const color = c === 'USD' ? 'text-green-600' : (c === 'IRT' ? 'text-orange-600' : 'text-blue-600');
+                                return (
+                                    <label key={c} className="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" checked={paymentCurrency === c} onChange={() => {setPaymentCurrency(c as any); setExchangeRate('');}} className={color} />
+                                        <span className={`text-xs font-bold ${color}`}>{label}</span>
+                                    </label>
+                                );
+                            })}
                         </div>
-                        {paymentCurrency !== 'AFN' && (
+                        {paymentCurrency !== baseCurrency && (
                              <div className="flex items-center gap-3">
-                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ {paymentCurrency === 'USD' ? 'دلار به افغانی' : 'افغانی به تومان'}:</span>
+                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ تبدیل ({baseCurrencyName} به {paymentCurrency}):</span>
                                 <input type="text" inputMode="decimal" value={exchangeRate} onChange={e => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" />
                             </div>
                         )}
                         <input name="amount" type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ دریافتی (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-emerald-50 font-black text-xl text-center" required />
-                        {paymentCurrency !== 'AFN' && convertedPayment > 0 && (
-                            <p className="text-[10px] font-black text-emerald-600 text-left">معادل دریافتی: {Math.round(convertedPayment).toLocaleString()} AFN</p>
+                        {paymentCurrency !== baseCurrency && convertedPayment > 0 && (
+                            <p className="text-[10px] font-black text-emerald-600 text-left">معادل دریافتی: {Math.round(convertedPayment).toLocaleString()} {baseCurrencyName}</p>
                         )}
                         <input name="description" placeholder="بابت... (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl shadow-emerald-100 font-black text-lg active:scale-[0.98]">ثبت نهایی و چاپ رسید</button>
@@ -757,85 +790,297 @@ const CustomersTab = () => {
 };
 
 const ExpensesTab = () => {
-    const { expenses, addExpense, storeSettings } = useAppContext();
+    const { expenses, addExpense, updateExpense, deleteExpense, storeSettings, updateSettings } = useAppContext();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    
+    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+    const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+    const [expenseCurrency, setExpenseCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency);
+    const [expenseRate, setExpenseRate] = useState('');
+    const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    const baseCurrency = storeSettings.baseCurrency;
+    const baseCurrencyName = storeSettings.currencyConfigs[baseCurrency].name;
+    const categories = storeSettings.expenseCategories || ['rent', 'utilities', 'supplies', 'salary', 'other'];
+
+    const filteredExpenses = useMemo(() => {
+        if (filterCategory === 'all') return expenses;
+        return expenses.filter(e => e.category === filterCategory);
+    }, [expenses, filterCategory]);
+
     const handleAddExpenseForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        addExpense({
+        const amount = Number(toEnglishDigits(formData.get('amount') as string).replace(/[^0-9.]/g, ''));
+        
+        if (expenseCurrency !== baseCurrency && (!expenseRate || Number(expenseRate) <= 0)) {
+            alert("لطفا نرخ ارز را وارد کنید.");
+            return;
+        }
+
+        const expenseData = {
             date: new Date(formData.get('date') as string).toISOString(),
             description: formData.get('description') as string,
-            amount: Number(toEnglishDigits(formData.get('amount') as string).replace(/[^0-9.]/g, '')),
-            category: formData.get('category') as any,
-        });
+            amount: amount,
+            currency: expenseCurrency,
+            exchangeRate: expenseCurrency === baseCurrency ? 1 : Number(expenseRate),
+            category: formData.get('category') as string,
+        };
+
+        if (editingExpense) {
+            updateExpense({ ...editingExpense, ...expenseData });
+        } else {
+            addExpense(expenseData);
+        }
+        
+        closeModal();
+    };
+
+    const closeModal = () => {
         setIsModalOpen(false);
+        setEditingExpense(null);
+        setExpenseRate('');
+        setExpenseCurrency(storeSettings.baseCurrency);
+    };
+
+    const handleEditExpense = (expense: Expense) => {
+        setEditingExpense(expense);
+        setExpenseCurrency(expense.currency);
+        setExpenseRate(expense.exchangeRate.toString());
+        setIsModalOpen(true);
+    };
+
+    const handleManageCategories = (newCategories: string[]) => {
+        updateSettings({ ...storeSettings, expenseCategories: newCategories });
+    };
+
+    const getCategoryLabel = (cat: string) => {
+        const labels: { [key: string]: string } = {
+            rent: 'کرایه',
+            utilities: 'قبوض',
+            supplies: 'ملزومات',
+            salary: 'حقوق و دستمزد',
+            other: 'سایر'
+        };
+        return labels[cat] || cat;
     };
 
     return (
         <div>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center bg-blue-600 text-white px-5 py-3 rounded-xl shadow-lg mb-8 btn-primary">
-                <PlusIcon className="w-5 h-5 ml-2" /> <span className="font-bold">ثبت هزینه جدید</span>
-            </button>
+            <div className="flex flex-wrap gap-3 mb-8">
+                <button onClick={() => setIsModalOpen(true)} className="flex items-center bg-blue-600 text-white px-5 py-3 rounded-xl shadow-lg btn-primary">
+                    <PlusIcon className="w-5 h-5 ml-2" /> <span className="font-bold">ثبت هزینه جدید</span>
+                </button>
+                
+                <div className="relative">
+                    <button 
+                        onClick={() => setIsFilterOpen(!isFilterOpen)} 
+                        className={`flex items-center px-5 py-3 rounded-xl border transition-all ${filterCategory !== 'all' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-700'}`}
+                    >
+                        <FilterIcon className="w-5 h-5 ml-2" />
+                        <span className="font-bold">{filterCategory === 'all' ? 'فیلتر دسته‌بندی' : getCategoryLabel(filterCategory)}</span>
+                        <ChevronDownIcon className={`w-4 h-4 mr-2 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isFilterOpen && (
+                        <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                            <button 
+                                onClick={() => { setFilterCategory('all'); setIsFilterOpen(false); }}
+                                className={`w-full text-right px-4 py-3 text-sm font-bold hover:bg-slate-50 transition-colors ${filterCategory === 'all' ? 'text-blue-600 bg-blue-50/50' : 'text-slate-600'}`}
+                            >
+                                همه دسته‌ها
+                            </button>
+                            {categories.map(cat => (
+                                <button 
+                                    key={cat}
+                                    onClick={() => { setFilterCategory(cat); setIsFilterOpen(false); }}
+                                    className={`w-full text-right px-4 py-3 text-sm font-bold hover:bg-slate-50 transition-colors ${filterCategory === cat ? 'text-blue-600 bg-blue-50/50' : 'text-slate-600'}`}
+                                >
+                                    {getCategoryLabel(cat)}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <button onClick={() => setIsCategoryModalOpen(true)} className="flex items-center bg-slate-100 text-slate-600 px-5 py-3 rounded-xl hover:bg-slate-200 transition-colors">
+                    <SettingsIcon className="w-5 h-5 ml-2" /> <span className="font-bold">مدیریت دسته‌ها</span>
+                </button>
+            </div>
+
              <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-lg hidden md:block bg-white/40">
                 <table className="min-w-full text-center bg-white/60 responsive-table">
                     <thead className="bg-slate-50">
                         <tr>
                             <th className="p-4 font-bold text-slate-700">تاریخ</th>
-                            <th className="p-4 font-bold text-slate-700">شرح هزینه</th>
+                            <th className="p-4 font-bold text-slate-700 text-right">شرح هزینه</th>
                             <th className="p-4 font-bold text-slate-700">دسته‌بندی</th>
-                            <th className="p-4 font-bold text-slate-700">مبلغ</th>
+                            <th className="p-4 font-bold text-slate-700">مبلغ ارزی</th>
+                            <th className="p-4 font-bold text-slate-700">معادل ({baseCurrencyName})</th>
+                            <th className="p-4 font-bold text-slate-700 w-20">عملیات</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {expenses.map(e => (
+                        {filteredExpenses.length === 0 ? (
+                            <tr>
+                                <td colSpan={6} className="p-12 text-slate-400 font-bold">هیچ هزینه‌ای یافت نشد.</td>
+                            </tr>
+                        ) : filteredExpenses.map(e => (
                             <tr key={e.id} className="border-t border-gray-200 transition-colors hover:bg-blue-50/30">
                                 <td className="p-4 text-md text-slate-500 font-medium">{new Date(e.date).toLocaleDateString('fa-IR')}</td>
-                                <td className="p-4 text-lg font-bold text-slate-800">{e.description}</td>
+                                <td className="p-4 text-lg font-bold text-slate-800 text-right">{e.description}</td>
                                 <td className="p-4">
-                                    <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-500">{e.category}</span>
+                                    <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-500">{getCategoryLabel(e.category)}</span>
                                 </td>
-                                <td className="p-4 text-lg font-black text-red-600">{formatCurrency(e.amount, storeSettings)}</td>
+                                <td className="p-4 text-lg font-black text-red-600" dir="ltr">
+                                    {e.amount.toLocaleString()} {e.currency || baseCurrency}
+                                </td>
+                                <td className="p-4 text-lg font-black text-slate-800" dir="ltr">
+                                    {formatCurrency(e.amountBase || e.amount, storeSettings)}
+                                </td>
+                                <td className="p-4">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button onClick={() => handleEditExpense(e)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="ویرایش">
+                                            <EditIcon className="w-5 h-5" />
+                                        </button>
+                                        <button onClick={() => { if(confirm('آیا از حذف این هزینه اطمینان دارید؟')) deleteExpense(e.id); }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="حذف">
+                                            <TrashIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
+
             <div className="md:hidden space-y-4">
-                {expenses.map(e => (
-                    <div key={e.id} className="bg-white/80 p-5 rounded-2xl shadow-md border border-slate-100 flex justify-between items-center">
-                        <div className="text-right">
-                            <h3 className="font-black text-lg text-slate-800 leading-tight">{e.description}</h3>
-                            <div className="flex gap-2 items-center mt-1.5">
-                                <span className="text-[10px] font-black bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 uppercase">{e.category}</span>
-                                <span className="text-[10px] text-slate-400 font-medium">{new Date(e.date).toLocaleDateString('fa-IR')}</span>
+                {filteredExpenses.map(e => (
+                    <div key={e.id} className="bg-white/80 p-5 rounded-2xl shadow-md border border-slate-100">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="text-right">
+                                <h3 className="font-black text-lg text-slate-800 leading-tight">{e.description}</h3>
+                                <div className="flex gap-2 items-center mt-1.5">
+                                    <span className="text-[10px] font-black bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 uppercase">{getCategoryLabel(e.category)}</span>
+                                    <span className="text-[10px] text-slate-400 font-medium">{new Date(e.date).toLocaleDateString('fa-IR')}</span>
+                                </div>
+                            </div>
+                            <div className="text-left">
+                                <p className="font-black text-red-600 text-lg" dir="ltr">{e.amount.toLocaleString()} {e.currency || baseCurrency}</p>
+                                <p className="text-[10px] text-slate-400 font-bold">{formatCurrency(e.amountBase || e.amount, storeSettings)}</p>
                             </div>
                         </div>
-                        <div className="text-left">
-                            <p className="font-black text-red-600 text-lg" dir="ltr">{formatCurrency(e.amount, storeSettings)}</p>
+                        <div className="flex gap-2 border-t border-slate-50 pt-3">
+                            <button onClick={() => handleEditExpense(e)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-sm">
+                                <EditIcon className="w-4 h-4" /> ویرایش
+                            </button>
+                            <button onClick={() => { if(confirm('آیا از حذف این هزینه اطمینان دارید؟')) deleteExpense(e.id); }} className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm">
+                                <TrashIcon className="w-4 h-4" /> حذف
+                            </button>
                         </div>
                     </div>
                 ))}
             </div>
 
             {isModalOpen && (
-                <Modal title="ثبت هزینه جدید" onClose={() => setIsModalOpen(false)}>
+                <Modal title={editingExpense ? "ویرایش هزینه" : "ثبت هزینه جدید"} onClose={closeModal}>
                     <form onSubmit={handleAddExpenseForm} className="space-y-4">
-                        <input name="date" type="date" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" defaultValue={new Date().toISOString().split('T')[0]} required />
-                        <input name="description" placeholder="شرح هزینه (مثلاً خرید کاغذ)" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" required />
-                        <input name="amount" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} placeholder={`مبلغ هزینه (${storeSettings.currencyName})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold" required />
-                        <select name="category" className="w-full p-4 border border-slate-200 rounded-xl bg-white font-bold outline-none focus:ring-4 focus:ring-blue-50">
-                            <option value="utilities"> قبوض (برق، آب...)</option>
-                            <option value="rent">کرایه</option>
-                            <option value="supplies">ملزومات</option>
-                            <option value="salary">حقوق و دستمزد</option>
-                            <option value="other">سایر هزینه‌ها</option>
+                        <input name="date" type="date" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" defaultValue={editingExpense ? new Date(editingExpense.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} required />
+                        <input name="description" placeholder="شرح هزینه (مثلاً خرید کاغذ)" className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50" defaultValue={editingExpense?.description} required />
+                        
+                        <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            {['AFN', 'USD', 'IRT'].map(c => {
+                                const label = storeSettings.currencyConfigs[c as 'AFN'|'USD'|'IRT'].name;
+                                const color = c === 'USD' ? 'text-green-600' : (c === 'IRT' ? 'text-orange-600' : 'text-blue-600');
+                                return (
+                                    <label key={c} className="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" checked={expenseCurrency === c} onChange={() => {setExpenseCurrency(c as any); setExpenseRate('');}} className={color} />
+                                        <span className={`text-xs font-bold ${color}`}>{label}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+
+                        {expenseCurrency !== baseCurrency && (
+                             <div className="flex items-center gap-3">
+                                <span className="text-xs whitespace-nowrap font-bold text-slate-400">نرخ تبدیل ({baseCurrencyName} به {expenseCurrency}):</span>
+                                <input type="text" inputMode="decimal" value={expenseRate} onChange={e => setExpenseRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="نرخ" className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-center" required />
+                            </div>
+                        )}
+
+                        <input name="amount" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} placeholder={`مبلغ هزینه (${expenseCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold text-center text-xl" defaultValue={editingExpense?.amount} required />
+                        
+                        <select name="category" className="w-full p-4 border border-slate-200 rounded-xl bg-white font-bold outline-none focus:ring-4 focus:ring-blue-50" defaultValue={editingExpense?.category}>
+                            {categories.map(cat => (
+                                <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
+                            ))}
                         </select>
-                        <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg active:scale-[0.98] transition-all">ثبت هزینه</button>
+                        <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg active:scale-[0.98] transition-all">
+                            {editingExpense ? "بروزرسانی هزینه" : "ثبت هزینه"}
+                        </button>
                     </form>
                 </Modal>
             )}
+
+            {isCategoryModalOpen && (
+                <CategoryManagerModal 
+                    categories={categories} 
+                    onClose={() => setIsCategoryModalOpen(false)} 
+                    onSave={handleManageCategories} 
+                />
+            )}
         </div>
+    );
+};
+
+const CategoryManagerModal: React.FC<{ categories: string[], onClose: () => void, onSave: (cats: string[]) => void }> = ({ categories, onClose, onSave }) => {
+    const [localCats, setLocalCats] = useState<string[]>(categories);
+    const [newCat, setNewCat] = useState('');
+
+    const addCat = () => {
+        if (newCat.trim() && !localCats.includes(newCat.trim())) {
+            setLocalCats([...localCats, newCat.trim()]);
+            setNewCat('');
+        }
+    };
+
+    const removeCat = (cat: string) => {
+        setLocalCats(localCats.filter(c => c !== cat));
+    };
+
+    const handleSave = () => {
+        onSave(localCats);
+        onClose();
+    };
+
+    return (
+        <Modal title="مدیریت دسته‌بندی هزینه‌ها" onClose={onClose}>
+            <div className="space-y-6">
+                <div className="flex gap-2">
+                    <input 
+                        value={newCat} 
+                        onChange={e => setNewCat(e.target.value)} 
+                        placeholder="نام دسته‌بندی جدید" 
+                        className="flex-grow p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50"
+                        onKeyPress={e => e.key === 'Enter' && addCat()}
+                    />
+                    <button onClick={addCat} className="bg-blue-600 text-white px-6 rounded-xl font-bold">افزودن</button>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                    {localCats.map(cat => (
+                        <div key={cat} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <span className="font-bold text-slate-700">{cat}</span>
+                            <button onClick={() => removeCat(cat)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors">
+                                <TrashIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                <button onClick={handleSave} className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg">ذخیره تغییرات</button>
+            </div>
+        </Modal>
     );
 };
 

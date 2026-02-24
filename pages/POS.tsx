@@ -501,8 +501,11 @@ const POS: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState(false);
 
     // Multi-currency POS State
-    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency || 'AFN');
     const [exchangeRate, setExchangeRate] = useState<string>('');
+
+    const baseCurrency = storeSettings.baseCurrency || 'AFN';
+    const baseCurrencyName = storeSettings.currencyConfigs?.[baseCurrency]?.name || 'AFN';
 
     useEffect(() => { loadMemoImages(); }, []);
     

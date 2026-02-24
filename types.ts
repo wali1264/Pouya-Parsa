@@ -150,8 +150,13 @@ export interface Employee {
     id: string;
     name: string;
     position: string;
-    monthlySalary: number;
-    balance: number; // Positive means advances taken
+    basicSalary: number;
+    otherBenefits: number;
+    monthlySalary: number; // Total (Basic + Benefits)
+    balance: number; // Total in base currency
+    balanceAFN: number;
+    balanceUSD: number;
+    balanceIRT: number;
 }
 
 export interface PayrollTransaction {
@@ -159,6 +164,8 @@ export interface PayrollTransaction {
     employeeId: string;
     type: 'advance' | 'salary_payment';
     amount: number;
+    currency: 'AFN' | 'USD' | 'IRT';
+    exchangeRate: number;
     date: string;
     description: string;
 }
@@ -189,10 +196,14 @@ export type AnyTransaction = CustomerTransaction | SupplierTransaction | Payroll
 
 export interface Expense {
     id: string;
-    category: 'rent' | 'utilities' | 'supplies' | 'salary' | 'other';
+    category: string;
     description: string;
     amount: number;
+    currency: 'AFN' | 'USD' | 'IRT';
+    exchangeRate: number;
+    amountBase?: number; // Equivalent in base currency
     date: string;
+    relatedId?: string; // Link to purchase invoices or other entities
 }
 
 export interface SalesMemoImage {
@@ -224,6 +235,7 @@ export interface StoreSettings {
         USD: CurrencyConfig;
         IRT: CurrencyConfig;
     };
+    expenseCategories: string[]; // Dynamic categories
 }
 
 // --- Package/Unit Management ---

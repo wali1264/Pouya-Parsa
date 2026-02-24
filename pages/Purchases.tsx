@@ -570,28 +570,6 @@ const Purchases: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* New Fields for Additional Cost */}
-                                <div className="flex-grow flex items-center gap-3 border-r border-blue-100 pr-4">
-                                    <div className="flex-grow">
-                                        <input 
-                                            type="text" 
-                                            placeholder="توضیحات هزینه اضافه (مثلاً باربری)"
-                                            className="w-full bg-white border border-blue-100 rounded-xl px-4 py-2 text-[11px] font-bold focus:outline-none focus:border-blue-500 transition-all"
-                                            value={costDescription}
-                                            onChange={e => setCostDescription(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="w-28">
-                                        <input 
-                                            type="text" 
-                                            inputMode="decimal"
-                                            placeholder="مبلغ هزینه"
-                                            className="w-full bg-white border border-blue-100 rounded-xl px-4 py-2 text-[11px] font-black text-blue-600 text-center focus:outline-none focus:border-blue-500 transition-all"
-                                            value={additionalCost}
-                                            onChange={e => setAdditionalCost(toEnglishDigits(e.target.value))}
-                                        />
-                                    </div>
-                                </div>
                            </div>
                            
                            <div className="relative mb-2">
@@ -673,6 +651,35 @@ const Purchases: React.FC = () => {
                                     )
                                 })}
                            </div>
+
+                           {/* Additional Cost Section - Only show if items are added */}
+                           {items.length > 0 && (
+                               <div className="mt-6 pt-6 border-t border-slate-200 animate-fade-in">
+                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                       <div>
+                                           <label className="block text-[10px] font-black text-slate-400 mb-1 mr-1">مبلغ هزینه اضافه ({currency})</label>
+                                           <input 
+                                               type="text" 
+                                               inputMode="decimal"
+                                               className="w-full p-3 bg-white border border-gray-300 rounded-xl text-lg font-black text-blue-600 text-center focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                                               placeholder="0"
+                                               value={additionalCost}
+                                               onChange={e => setAdditionalCost(toEnglishDigits(e.target.value))}
+                                           />
+                                       </div>
+                                       <div>
+                                           <label className="block text-[10px] font-black text-slate-400 mb-1 mr-1">توضیحات هزینه (اختیاری)</label>
+                                           <input 
+                                               type="text" 
+                                               className="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                                               placeholder="مثلاً: هزینه باربری، گمرک و غیره"
+                                               value={costDescription}
+                                               onChange={e => setCostDescription(e.target.value)}
+                                           />
+                                       </div>
+                                   </div>
+                               </div>
+                           )}
                         </div>
 
                         <div className="flex-shrink-0 flex flex-col md:flex-row justify-between items-center mt-6 pt-4 border-t border-slate-200">
