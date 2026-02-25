@@ -49,6 +49,7 @@ export interface SaleInvoice {
   timestamp: string;
   cashier: string;
   customerId?: string; // Optional: for credit sales
+  supplierIntermediaryId?: string; // Optional: for sales to suppliers
   currency: 'AFN' | 'USD' | 'IRT'; // Multi-currency support
   exchangeRate: number;            // Rate to base currency (AFN)
 }

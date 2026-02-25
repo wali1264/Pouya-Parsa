@@ -146,7 +146,7 @@ const Dashboard: React.FC = () => {
         };
     }, []);
 
-    const { totalSalesToday, totalCreditSalesToday, todayCreditInvoices } = useMemo(() => {
+    const { totalSalesToday, totalCreditSalesToday, todayCreditInvoices, totalCashSalesToday } = useMemo(() => {
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
         const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
@@ -160,9 +160,15 @@ const Dashboard: React.FC = () => {
         const returns = todayInvoices.filter(inv => inv.type === 'return').reduce((sum, inv) => sum + inv.totalAmount, 0);
         const creditInvoices = todayInvoices.filter(inv => inv.customerId && inv.type === 'sale');
         const creditSales = creditInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+        
+        const supplierIntermediaryInvoices = todayInvoices.filter(inv => inv.supplierIntermediaryId && inv.type === 'sale');
+        const supplierIntermediarySales = supplierIntermediaryInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+        const cashSales = sales - creditSales - supplierIntermediarySales - returns;
             
         return { 
             totalSalesToday: sales - returns, 
+            totalCashSalesToday: cashSales,
             totalCreditSalesToday: creditSales,
             todayCreditInvoices: creditInvoices.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         };

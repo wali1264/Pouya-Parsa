@@ -10,22 +10,27 @@ interface PrintPreviewModalProps {
 }
 
 const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose }) => {
-    const { storeSettings, customers, setInvoiceTransientCustomer } = useAppContext();
+    const { storeSettings, customers, suppliers, setInvoiceTransientCustomer } = useAppContext();
     const [customCustomerName, setCustomCustomerName] = useState('');
     const [isEditingName, setIsEditingName] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
     const customer = useMemo(() => {
-        return invoice.customerId ? customers.find(c => c.id === invoice.customerId) : null;
-    }, [invoice.customerId, customers]);
+        if (invoice.customerId) return customers.find(c => c.id === invoice.customerId);
+        if (invoice.supplierIntermediaryId) return suppliers.find(s => s.id === invoice.supplierIntermediaryId);
+        return null;
+    }, [invoice.customerId, invoice.supplierIntermediaryId, customers, suppliers]);
 
     useEffect(() => {
         if (customer) {
             setCustomCustomerName(customer.name);
+        } else if (invoice.supplierIntermediaryId) {
+            const s = suppliers.find(sup => sup.id === invoice.supplierIntermediaryId);
+            if (s) setCustomCustomerName(s.name);
         } else if (invoice.type === 'sale') {
             setCustomCustomerName(invoice.originalInvoiceId || '');
         }
-    }, [customer, invoice]);
+    }, [customer, invoice, suppliers]);
 
     useEffect(() => {
         if (isEditingName && inputRef.current) {

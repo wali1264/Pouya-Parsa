@@ -72,7 +72,7 @@ const Login: React.FC = () => {
                         <KeyIcon className="w-12 h-12" />
                     </div>
                     <h2 className="text-2xl font-bold text-slate-800">در انتظار تایید مدیریت</h2>
-                    <p className="text-slate-600 leading-relaxed font-medium">حساب شما با موفقیت ساخته شد. پس از تایید ایمیل، منتظر بمانید تا مدیر کل دسترسی شما را فعال کند.</p>
+                    <p className="text-slate-600 leading-relaxed font-medium">حساب شما با موفقیت ساخته شد. لطفاً منتظر بمانید تا مدیر کل دسترسی شما را تایید و فعال کند.</p>
                     <button onClick={() => { setIsPending(false); setIsLoginMode(true); }} className="text-blue-600 font-bold hover:underline mt-4">بازگشت به صفحه ورود</button>
                 </div>
             </div>
@@ -99,7 +99,7 @@ const Login: React.FC = () => {
             <div className="w-full max-w-md bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white overflow-hidden modal-animate">
                 {/* Header Section */}
                 <div className="pt-10 pb-6 px-8 text-center bg-gradient-to-b from-blue-50/50 to-transparent">
-                    <h1 className="text-4xl font-black text-blue-600 mb-1">پویا پارسا</h1>
+                    <h1 className="text-4xl font-black text-blue-600 mb-1 tracking-tighter">Vendura</h1>
                     <div className="flex items-center justify-center gap-2 mb-4">
                         <div className={`w-2 h-2 rounded-full ${isShopActive ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
                         <span className={`text-[10px] font-bold uppercase tracking-wider ${isShopActive ? 'text-green-600' : 'text-red-600'}`}>

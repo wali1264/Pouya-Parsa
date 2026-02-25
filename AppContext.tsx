@@ -47,8 +47,8 @@ interface AppContextType extends AppState {
     updateCartItemQuantity: (itemId: string, itemType: 'product' | 'service', newQuantity: number) => { success: boolean; message: string };
     updateCartItemFinalPrice: (itemId: string, itemType: 'product' | 'service', finalPrice: number) => void;
     removeFromCart: (itemId: string, itemType: 'product' | 'service') => void;
-    completeSale: (cashier: string, customerId?: string, currency?: 'AFN'|'USD'|'IRT', exchangeRate?: number) => Promise<{ success: boolean; invoice?: SaleInvoice; message: string }>;
-    beginEditSale: (invoiceId: string) => { success: boolean; message: string; customerId?: string; };
+    completeSale: (cashier: string, customerId?: string, currency?: 'AFN'|'USD'|'IRT', exchangeRate?: number, supplierIntermediaryId?: string) => Promise<{ success: boolean; invoice?: SaleInvoice; message: string }>;
+    beginEditSale: (invoiceId: string) => { success: boolean; message: string; customerId?: string; supplierIntermediaryId?: string; };
     cancelEditSale: () => void;
     addSaleReturn: (originalInvoiceId: string, returnItems: { id: string; type: 'product' | 'service'; quantity: number }[], cashier: string) => Promise<{ success: boolean, message: string }>;
     setInvoiceTransientCustomer: (invoiceId: string, customerName: string) => Promise<void>;
@@ -116,7 +116,7 @@ const getDefaultState = (): AppState => {
         products: [], saleInvoices: [], purchaseInvoices: [], inTransitInvoices: [], customers: [],
         suppliers: [], employees: [], expenses: [], services: [], depositHolders: [], depositTransactions: [],
         storeSettings: {
-            storeName: 'پویا پارسا', address: '', phone: '', lowStockThreshold: 10,
+        storeName: 'Vendura', address: '', phone: '', lowStockThreshold: 10,
             expiryThresholdMonths: 3, currencyName: 'افغانی', currencySymbol: 'AFN',
             packageLabel: 'بسته', unitLabel: 'عدد',
             baseCurrency: 'AFN',
@@ -383,7 +383,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `KasebYar_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `Vendura_Backup_${new Date().toISOString().split('T')[0]}.json`;
         link.click();
         URL.revokeObjectURL(url);
     };
@@ -457,8 +457,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     // --- Standardized POS Logic: Sales with FIFO Stock Updates and Atomic Replacement ---
-    const completeSale = async (cashier: string, customerId?: string, currency: 'AFN'|'USD'|'IRT' = 'AFN', exchangeRate: number = 1): Promise<{ success: boolean; invoice?: SaleInvoice; message: string }> => {
-        const { cart, products, editingSaleInvoiceId, saleInvoices, customers } = state;
+    const completeSale = async (cashier: string, customerId?: string, currency: 'AFN'|'USD'|'IRT' = 'AFN', exchangeRate: number = 1, supplierIntermediaryId?: string): Promise<{ success: boolean; invoice?: SaleInvoice; message: string }> => {
+        const { cart, products, editingSaleInvoiceId, saleInvoices, customers, suppliers } = state;
         if (cart.length === 0) return { success: false, message: "سبد خالی است!" };
 
         const oldInv = editingSaleInvoiceId ? saleInvoices.find(inv => inv.id === editingSaleInvoiceId) : null;
@@ -534,14 +534,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             timestamp: new Date().toISOString(), 
             cashier, 
             customerId, 
+            supplierIntermediaryId,
             currency, 
             exchangeRate 
         };
 
         // 4. Atomic Balance Update
         const customerUpdates: {id: string, newBalances: {AFN: number, USD: number, IRT: number, Total: number}}[] = [];
+        const supplierUpdates: {id: string, newBalances: {AFN: number, USD: number, IRT: number, Total: number}}[] = [];
         
-        // Revert Old
+        // Revert Old Customer
         if (oldInv && oldInv.customerId) {
             const oc = customers.find(c => c.id === oldInv.customerId);
             if (oc) {
@@ -554,7 +556,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
         }
 
-        // Apply New (Fixing the currency balance error)
+        // Revert Old Supplier Intermediary
+        if (oldInv && oldInv.supplierIntermediaryId) {
+            const os = suppliers.find(s => s.id === oldInv.supplierIntermediaryId);
+            if (os) {
+                let balAFN = os.balanceAFN, balUSD = os.balanceUSD, balIRT = os.balanceIRT, balTotal = os.balance;
+                // Debit was added (negative impact on supplier credit), so we add it back (credit)
+                if (oldInv.currency === 'USD') balUSD += oldInv.totalAmount;
+                else if (oldInv.currency === 'IRT') balIRT += oldInv.totalAmount;
+                else balAFN += oldInv.totalAmount;
+                balTotal += oldInv.totalAmountAFN;
+                supplierUpdates.push({ id: os.id, newBalances: { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal } });
+            }
+        }
+
+        // Apply New Customer
         if (customerId) {
             const nc = customers.find(c => c.id === customerId);
             if (nc) {
@@ -564,12 +580,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 let balIRT = prevUpdate ? prevUpdate.newBalances.IRT : nc.balanceIRT;
                 let balTotal = prevUpdate ? prevUpdate.newBalances.Total : nc.balance;
 
-                // FIX: Add the transactional amount to the specific currency wallet
                 if (currency === 'USD') balUSD += totalTransactional;
                 else if (currency === 'IRT') balIRT += totalTransactional;
                 else balAFN += totalTransactional;
                 
-                // The total balance is always trackable in base currency
                 balTotal += totalBaseAmount;
 
                 const finalBal = { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal };
@@ -578,7 +592,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
         }
 
-        const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: totalTransactional, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency };
+        // Apply New Supplier Intermediary
+        if (supplierIntermediaryId) {
+            const ns = suppliers.find(s => s.id === supplierIntermediaryId);
+            if (ns) {
+                const prevUpdate = supplierUpdates.find(u => u.id === supplierIntermediaryId);
+                let balAFN = prevUpdate ? prevUpdate.newBalances.AFN : ns.balanceAFN;
+                let balUSD = prevUpdate ? prevUpdate.newBalances.USD : ns.balanceUSD;
+                let balIRT = prevUpdate ? prevUpdate.newBalances.IRT : ns.balanceIRT;
+                let balTotal = prevUpdate ? prevUpdate.newBalances.Total : ns.balance;
+
+                // Supplier account is debited (they owe us more or we owe them less)
+                if (currency === 'USD') balUSD -= totalTransactional;
+                else if (currency === 'IRT') balIRT -= totalTransactional;
+                else balAFN -= totalTransactional;
+                
+                balTotal -= totalBaseAmount;
+
+                const finalBal = { AFN: balAFN, USD: balUSD, IRT: balIRT, Total: balTotal };
+                if (prevUpdate) prevUpdate.newBalances = finalBal;
+                else supplierUpdates.push({ id: ns.id, newBalances: finalBal });
+            }
+        }
+
+        const customerTx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: totalTransactional, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency };
+        const supplierTx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: supplierIntermediaryId || '', type: 'payment', amount: totalTransactional, date: finalInv.timestamp, description: `فروش کالا (واسطه) - فاکتور #${invId}`, invoiceId: invId, currency };
 
         try {
             if (editingSaleInvoiceId) {
@@ -588,9 +626,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         it.batchDeductions.forEach(d => stockRestores.push(d));
                     }
                 });
-                await api.updateSale(editingSaleInvoiceId, finalInv, stockRestores, stockUpdates, customerUpdates, tx);
+                await api.updateSale(
+                    editingSaleInvoiceId, 
+                    finalInv, 
+                    stockRestores, 
+                    stockUpdates, 
+                    customerUpdates, 
+                    customerTx,
+                    supplierUpdates,
+                    supplierIntermediaryId ? supplierTx : undefined
+                );
             } else {
-                await api.createSale(finalInv, stockUpdates, customerUpdates[0] ? { ...customerUpdates[0], transaction: tx } : undefined);
+                await api.createSale(
+                    finalInv, 
+                    stockUpdates, 
+                    customerUpdates[0] ? { ...customerUpdates[0], transaction: customerTx } : undefined,
+                    supplierUpdates[0] ? { ...supplierUpdates[0], transaction: supplierTx } : undefined
+                );
             }
             
             await fetchData(true);
@@ -696,7 +748,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const inv = state.saleInvoices.find(i => i.id === id);
         if (!inv) return { success: false, message: "فاکتور یافت نشد." };
         setState(prev => ({ ...prev, editingSaleInvoiceId: id, cart: [...inv.items] }));
-        return { success: true, message: "آماده ویرایش.", customerId: inv.customerId };
+        return { success: true, message: "آماده ویرایش.", customerId: inv.customerId, supplierIntermediaryId: inv.supplierIntermediaryId };
     };
 
     const cancelEditSale = () => setState(prev => ({ ...prev, editingSaleInvoiceId: null, cart: [] }));
@@ -1252,7 +1304,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     const setInvoiceTransientCustomer = async (id: string, n: string) => {};
-    const updateInTransitInvoice = (d: any) => { api.updateInTransit(d as any).then(() => fetchData(true)); return { success: true, message: 'بروزرسانی شد' }; };
+    const updateInTransitInvoice = (d: any) => { 
+        const total = d.items.reduce((s:number, i:any) => s + (i.quantity*i.purchasePrice), 0);
+        api.updateInTransit({ ...d, totalAmount: total, type: 'in_transit' } as any).then(() => fetchData(true)); 
+        return { success: true, message: 'بروزرسانی شد' }; 
+    };
     const deleteInTransitInvoice = (id: string) => { api.deleteInTransit(id).then(() => fetchData(true)); };
     const addEmployeeAdvanceToEmployee = (eid: string, a: number, d: string, cur?: any, rate?: number) => { addEmployeeAdvance(eid, a, d, cur, rate); };
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import type { InvoiceItem, Product, SaleInvoice, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent, Customer, SalesMemoImage, Service, CartItem } from '../types';
+import type { InvoiceItem, Product, SaleInvoice, SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent, Customer, Supplier, SalesMemoImage, Service, CartItem } from '../types';
 import { useAppContext } from '../AppContext';
 import { MicIcon, EditIcon, PrintIcon, TrashIcon, CameraIcon, GalleryIcon, XIcon, CheckIcon, BarcodeIcon, PlusIcon, UserGroupIcon, ChevronDownIcon, WarningIcon } from '../components/icons';
 import Toast from '../components/Toast';
@@ -184,7 +184,8 @@ const CartSide: React.FC<any> = ({
     activeTab, setActiveTab, cart, filteredInvoices, services, setIsGalleryOpen, memoImages,
     editingSaleInvoiceId, handleCancelEdit, updateQuantity, removeFromCart, editingPriceItemId,
     setEditingPriceItemId, updateCartItemFinalPrice, hasPermission, selectedCustomerId,
-    setSelectedCustomerId, customers, totalAmount, completeSale, setInvoiceDateRange,
+    setSelectedCustomerId, customers, selectedSupplierId, setSelectedSupplierId, suppliers,
+    isSupplierMenuOpen, setIsSupplierMenuOpen, totalAmount, completeSale, setInvoiceDateRange,
     handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
     isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
 }) => {
@@ -225,6 +226,45 @@ const CartSide: React.FC<any> = ({
                     </span>
                 )}
             </button>
+
+            {/* Supplier Intermediary Selection */}
+            <div className="relative ml-1">
+                <button 
+                    onClick={() => !selectedCustomerId && setIsSupplierMenuOpen(!isSupplierMenuOpen)} 
+                    disabled={!!selectedCustomerId}
+                    className={`flex-shrink-0 p-2 rounded-full transition-colors ${selectedSupplierId ? 'text-emerald-600 bg-emerald-50' : 'text-gray-500 hover:text-emerald-600 hover:bg-gray-100'} ${selectedCustomerId ? 'opacity-30 cursor-not-allowed' : ''}`}
+                    title={selectedCustomerId ? "در فروش نسیه غیرفعال است" : "انتخاب تامین‌کننده (واسطه)"}
+                >
+                    <UserGroupIcon className="w-6 h-6" />
+                </button>
+                
+                {isSupplierMenuOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 z-[110] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="p-3 border-b bg-gray-50 flex justify-between items-center">
+                            <span className="text-xs font-bold text-gray-600">انتخاب تامین‌کننده واسط</span>
+                            <button onClick={() => setIsSupplierMenuOpen(false)} className="text-gray-400 hover:text-red-500"><XIcon className="w-4 h-4" /></button>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto p-1">
+                            <button 
+                                onClick={() => { setSelectedSupplierId(''); setIsSupplierMenuOpen(false); }}
+                                className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-colors ${!selectedSupplierId ? 'bg-emerald-50 text-emerald-700 font-bold' : 'hover:bg-gray-50 text-gray-600'}`}
+                            >
+                                بدون واسطه (فروش نقدی)
+                            </button>
+                            {suppliers.map((s: Supplier) => (
+                                <button 
+                                    key={s.id}
+                                    onClick={() => { setSelectedSupplierId(s.id); setIsSupplierMenuOpen(false); }}
+                                    className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-colors flex justify-between items-center ${selectedSupplierId === s.id ? 'bg-emerald-50 text-emerald-700 font-bold' : 'hover:bg-gray-50 text-gray-600'}`}
+                                >
+                                    <span>{s.name}</span>
+                                    <span className="text-[10px] opacity-60 font-mono">{s.balance.toLocaleString()}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
         
         {activeTab === 'cart' && (
@@ -464,6 +504,7 @@ const POS: React.FC = () => {
         products, 
         saleInvoices, 
         customers, 
+        suppliers,
         services,
         cart,
         addToCart: contextAddToCart,
@@ -482,6 +523,8 @@ const POS: React.FC = () => {
     const [mobileView, setMobileView] = useState<'products' | 'cart'>('products');
     const [invoiceToPrint, setInvoiceToPrint] = useState<SaleInvoice | null>(null);
     const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+    const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+    const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
     const [memoImages, setMemoImages] = useState<SalesMemoImage[]>([]);
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const memoFileInputRef = useRef<HTMLInputElement>(null);
@@ -693,7 +736,8 @@ const POS: React.FC = () => {
                 currentUser.username, 
                 selectedCustomerId || undefined, 
                 currency, 
-                currency === baseCurrency ? 1 : Number(exchangeRate)
+                currency === baseCurrency ? 1 : Number(exchangeRate),
+                selectedSupplierId || undefined
             );
             
             showToast(result.message);
@@ -701,6 +745,7 @@ const POS: React.FC = () => {
             if (result.success && result.invoice) {
                 if (!context.editingSaleInvoiceId) { setInvoiceToPrint(result.invoice); }
                 setSelectedCustomerId('');
+                setSelectedSupplierId('');
                 setMobileView('products');
                 setActiveTab('cart');
                 setCurrency(baseCurrency);
@@ -720,6 +765,7 @@ const POS: React.FC = () => {
         showToast(result.message);
         if (result.success) {
             setSelectedCustomerId(result.customerId || '');
+            setSelectedSupplierId(result.supplierIntermediaryId || '');
             if(inv) {
                 setCurrency(inv.currency);
                 setExchangeRate(inv.exchangeRate === 1 ? '' : String(inv.exchangeRate));
@@ -836,7 +882,10 @@ const POS: React.FC = () => {
                          editingSaleInvoiceId: context.editingSaleInvoiceId, handleCancelEdit: context.cancelEditSale, updateQuantity: contextUpdateQuantity, 
                          removeFromCart: contextRemoveFromCart, editingPriceItemId,
                          setEditingPriceItemId, updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission, 
-                         selectedCustomerId, setSelectedCustomerId, customers, totalAmount: totalAmountAFN, completeSale, setInvoiceDateRange,
+                         selectedCustomerId, setSelectedCustomerId, customers, 
+                         selectedSupplierId, setSelectedSupplierId, suppliers,
+                         isSupplierMenuOpen, setIsSupplierMenuOpen,
+                         totalAmount: totalAmountAFN, completeSale, setInvoiceDateRange,
                          handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
                          isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
                        }}

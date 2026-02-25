@@ -582,7 +582,21 @@ const InTransit: React.FC = () => {
                                             <div className="flex justify-between items-center mb-4"><h4 className="font-black text-slate-800 text-lg">{product.name}</h4><button onClick={() => setItems(items.filter((_,i)=>i!==idx))} className="p-2 text-red-400 hover:text-red-600"><TrashIcon className="w-5 h-5"/></button></div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                 <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-black text-slate-400 mb-2 block">تعداد کل سفارش</label><PackageUnitInput totalUnits={Number(item.quantity || 0)} itemsPerPackage={product.itemsPerPackage || 1} onChange={q => { const u = [...items]; u[idx].quantity = q; setItems(u); }} /></div>
-                                                <div><label className="text-[10px] font-black text-slate-400 mb-2 block">قیمت خرید واحد ({currency})</label><input type="text" inputMode="decimal" value={item.purchasePrice} onChange={e => { const u = [...items]; u[idx].purchasePrice = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''); setItems(u); }} placeholder="0" className="w-full h-12 p-3 bg-white border border-slate-200 rounded-xl text-center font-bold outline-none" /></div>
+                                                <div>
+                                                    <label className="text-[10px] font-black text-slate-400 mb-2 block">قیمت خرید واحد ({currency})</label>
+                                                    <input type="text" inputMode="decimal" value={item.purchasePrice} onChange={e => { const u = [...items]; u[idx].purchasePrice = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''); setItems(u); }} placeholder="0" className="w-full h-12 p-3 bg-white border border-slate-200 rounded-xl text-center font-bold outline-none" />
+                                                    {currency !== storeSettings.baseCurrency && exchangeRate && item.purchasePrice && (
+                                                        <p className="text-[10px] text-blue-500 font-bold mt-1 text-center">
+                                                            معادل: {(() => {
+                                                                const config = storeSettings.currencyConfigs[currency];
+                                                                const val = Number(item.purchasePrice);
+                                                                const rate = Number(exchangeRate);
+                                                                const converted = config?.method === 'multiply' ? val / rate : val * rate;
+                                                                return Math.round(converted).toLocaleString();
+                                                            })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
+                                                        </p>
+                                                    )}
+                                                </div>
                                                 <div><label className="text-[10px] font-black text-slate-400 mb-2 block">شماره لات</label><input type="text" value={item.lotNumber} onChange={e => { const u = [...items]; u[idx].lotNumber = toEnglishDigits(e.target.value); setItems(u); }} placeholder="اختیاری در فاکتور" className="w-full h-12 p-3 bg-white border-2 border-slate-200 rounded-xl text-center font-mono font-black" /></div>
                                                 <div><label className="text-[10px] font-black text-slate-400 mb-2 block">انقضا</label><input type="date" value={item.expiryDate} onChange={e => { const u = [...items]; u[idx].expiryDate = e.target.value; setItems(u); }} className="w-full h-12 p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold" /></div>
                                             </div>
@@ -595,6 +609,16 @@ const InTransit: React.FC = () => {
                             <div className="text-right">
                                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">ارزش کل سفارش</p>
                                 <p className="text-2xl font-black text-blue-600" dir="ltr">{totalInCurrency.toLocaleString()} {currency}</p>
+                                {currency !== storeSettings.baseCurrency && exchangeRate && (
+                                    <p className="text-xs font-bold text-slate-500 mt-1">
+                                        معادل: {(() => {
+                                            const config = storeSettings.currencyConfigs[currency];
+                                            const rate = Number(exchangeRate);
+                                            const converted = config?.method === 'multiply' ? totalInCurrency / rate : totalInCurrency * rate;
+                                            return Math.round(converted).toLocaleString();
+                                        })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
+                                    </p>
+                                )}
                             </div>
                             <div className="flex gap-4 w-full md:w-auto"><button onClick={handleCloseModal} className="flex-1 md:flex-none px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">لغو</button><button onClick={() => { const finalItems = items.map(d => ({ productId: d.productId, quantity: Number(d.quantity || 0), purchasePrice: Number(d.purchasePrice || 0), lotNumber: d.lotNumber.trim(), expiryDate: d.expiryDate || undefined })); const data = { id: editingInvoiceId || '', supplierId, invoiceNumber, items: finalItems, timestamp: invoiceDate + 'T' + new Date().toISOString().split('T')[1], currency, exchangeRate: currency === storeSettings.baseCurrency ? 1 : Number(exchangeRate), expectedArrivalDate, status: 'active' as const }; const result = editingInvoiceId ? updateInTransitInvoice(data) : addInTransitInvoice(data); if (result.success) handleCloseModal(); }} className="flex-[2] md:flex-none px-14 py-4 rounded-2xl font-black text-lg bg-blue-600 text-white shadow-2xl">ثبت نهایی</button></div>
                         </div>
