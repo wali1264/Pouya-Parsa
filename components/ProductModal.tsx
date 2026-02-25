@@ -401,18 +401,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                             </div>
                             {errors.purchasePrice && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.purchasePrice}</p>}
                             {errors.purchaseExchangeRate && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.purchaseExchangeRate}</p>}
-                            {purchaseCurrency !== 'AFN' && !product && purchaseExchangeRate && formData.purchasePrice && (
+                            {purchaseCurrency !== storeSettings.baseCurrency && !product && purchaseExchangeRate && formData.purchasePrice && (
                                 <p className="text-[10px] text-blue-500 font-bold mt-1">
-                                    معادل خرید: {purchaseCurrency === 'IRT' 
-                                        ? (Number(formData.purchasePrice) / Number(purchaseExchangeRate)).toLocaleString() 
-                                        : (Number(formData.purchasePrice) * Number(purchaseExchangeRate)).toLocaleString()} افغانی
+                                    معادل خرید: {(() => {
+                                        const config = storeSettings.currencyConfigs[purchaseCurrency];
+                                        const val = Number(formData.purchasePrice);
+                                        const rate = Number(purchaseExchangeRate);
+                                        const converted = config.method === 'multiply' ? val * rate : val / rate;
+                                        return converted.toLocaleString();
+                                    })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                 </p>
                             )}
                        </div>
                        
                        <div>
                             <FormInput 
-                                label={`قیمت فروش (${purchaseCurrency === 'AFN' || !!product ? 'AFN' : purchaseCurrency})`} 
+                                label={`قیمت فروش (${purchaseCurrency === storeSettings.baseCurrency || !!product ? (storeSettings.currencyConfigs[storeSettings.baseCurrency]?.symbol || storeSettings.baseCurrency) : purchaseCurrency})`} 
                                 id="salePrice" 
                                 name="salePrice" 
                                 type="text" 
@@ -423,11 +427,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                                 error={errors.salePrice} 
                                 onKeyDown={handleKeyDown} 
                             />
-                            {purchaseCurrency !== 'AFN' && !product && purchaseExchangeRate && formData.salePrice && (
+                            {purchaseCurrency !== storeSettings.baseCurrency && !product && purchaseExchangeRate && formData.salePrice && (
                                 <p className="text-[10px] text-emerald-600 font-bold mt-1">
-                                    معادل فروش: {purchaseCurrency === 'IRT' 
-                                        ? (Number(formData.salePrice) / Number(purchaseExchangeRate)).toLocaleString() 
-                                        : (Number(formData.salePrice) * Number(purchaseExchangeRate)).toLocaleString()} افغانی
+                                    معادل فروش: {(() => {
+                                        const config = storeSettings.currencyConfigs[purchaseCurrency];
+                                        const val = Number(formData.salePrice);
+                                        const rate = Number(purchaseExchangeRate);
+                                        const converted = config.method === 'multiply' ? val * rate : val / rate;
+                                        return converted.toLocaleString();
+                                    })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                 </p>
                             )}
                        </div>

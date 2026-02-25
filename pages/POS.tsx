@@ -112,7 +112,7 @@ const ProductSide: React.FC<{
                                 className="p-3 md:p-4 flex justify-between items-center hover:bg-blue-100/50 cursor-pointer border-b border-gray-200/60 last:border-b-0"
                             >
                                 <span className="font-semibold text-slate-800 text-sm md:text-lg">{product.name}</span>
-                                <span className="text-blue-600 font-bold text-sm md:text-base">{formatCurrency(product.salePrice, storeSettings)}</span>
+                                <span className="text-blue-600 font-bold text-sm md:text-base">{formatCurrency(product.salePrice, storeSettings, undefined, currency, Number(exchangeRate))}</span>
                             </li>
                         ))}
                     </ul>
@@ -279,7 +279,7 @@ const CartSide: React.FC<any> = ({
                                 onClick={() => setCurrency(c)} 
                                 className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${currency === c ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}
                             >
-                                {c}
+                                {storeSettings.currencyConfigs[c]?.name || c}
                             </button>
                         ))}
                     </div>
@@ -472,7 +472,8 @@ const POS: React.FC = () => {
         updateCartItemFinalPrice: contextUpdateCartItemFinalPrice,
         addSaleReturn,
         storeSettings,
-        currentUser
+        currentUser,
+        editingSaleInvoiceId
     } = context;
     
     const [searchTerm, setSearchTerm] = useState('');
@@ -503,6 +504,13 @@ const POS: React.FC = () => {
     // Multi-currency POS State
     const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency || 'AFN');
     const [exchangeRate, setExchangeRate] = useState<string>('');
+
+    // Sync currency with base currency on load if not editing
+    useEffect(() => {
+        if (!editingSaleInvoiceId && storeSettings.baseCurrency) {
+            setCurrency(storeSettings.baseCurrency);
+        }
+    }, [storeSettings.baseCurrency, editingSaleInvoiceId]);
 
     const baseCurrency = storeSettings.baseCurrency || 'AFN';
     const baseCurrencyName = storeSettings.currencyConfigs?.[baseCurrency]?.name || 'AFN';
@@ -842,8 +850,8 @@ const POS: React.FC = () => {
                  {mobileView === 'cart' && activeTab === 'cart' && (
                      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100/80 border-b">
                         <div className="flex gap-1.5">
-                            {['AFN', 'USD', 'IRT'].map(c => (
-                                <button key={c} onClick={() => setCurrency(c as any)} className={`px-3 py-1 rounded-lg text-[10px] font-black ${currency === c ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-500 border'}`}>{c}</button>
+                            {(['AFN', 'USD', 'IRT'] as const).map(c => (
+                                <button key={c} onClick={() => setCurrency(c)} className={`px-3 py-1 rounded-lg text-[10px] font-black ${currency === c ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-500 border'}`}>{storeSettings.currencyConfigs[c]?.name || c}</button>
                             ))}
                         </div>
                         {currency !== 'AFN' && (

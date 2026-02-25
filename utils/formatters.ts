@@ -41,11 +41,21 @@ export const parseToPackageAndUnits = (totalStock: number, itemsPerPackage: numb
     return { packages, units };
 };
 
-export const formatCurrency = (amount: number, settings: StoreSettings, customCurrencyName?: string): string => {
+export const formatCurrency = (amount: number, settings: StoreSettings, customCurrencyName?: string, targetCurrency?: 'AFN' | 'USD' | 'IRT', exchangeRate?: number): string => {
     const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
-    const formatted = safeAmount.toLocaleString('fa-IR', { maximumFractionDigits: 3 });
-    const currency = customCurrencyName || settings?.currencyConfigs?.[settings.baseCurrency]?.name || settings?.currencyName || 'AFN';
-    return `${formatted} ${currency}`;
+    let displayAmount = safeAmount;
+    let currencyName = customCurrencyName || settings?.currencyConfigs?.[settings.baseCurrency]?.name || settings?.currencyName || 'AFN';
+
+    if (targetCurrency && targetCurrency !== settings.baseCurrency && exchangeRate) {
+        const config = settings.currencyConfigs[targetCurrency];
+        if (config) {
+            displayAmount = config.method === 'multiply' ? safeAmount * exchangeRate : safeAmount / exchangeRate;
+            currencyName = config.name || targetCurrency;
+        }
+    }
+
+    const formatted = displayAmount.toLocaleString('fa-IR', { maximumFractionDigits: 3 });
+    return `${formatted} ${currencyName}`;
 };
 
 export const numberToPersianWords = (num: number): string => {

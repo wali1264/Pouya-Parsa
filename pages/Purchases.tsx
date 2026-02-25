@@ -620,6 +620,17 @@ const Purchases: React.FC = () => {
                                                         قیمت خرید ({currency})
                                                     </label>
                                                     <input type="text" inputMode="decimal" name="purchasePrice" data-index={index} value={item.purchasePrice} onChange={e => handleItemChange(index, 'purchasePrice', e.target.value)} placeholder="0" className="w-full h-12 p-3 bg-white/80 border border-gray-300 rounded-lg form-input outline-none focus:ring-4 focus:ring-blue-100 font-bold text-center" />
+                                                    {currency !== storeSettings.baseCurrency && exchangeRate && item.purchasePrice && (
+                                                        <p className="text-[10px] text-blue-500 font-bold mt-1 text-center">
+                                                            معادل: {(() => {
+                                                                const config = storeSettings.currencyConfigs[currency];
+                                                                const val = Number(item.purchasePrice);
+                                                                const rate = Number(exchangeRate);
+                                                                const converted = config?.method === 'multiply' ? val * rate : val / rate;
+                                                                return converted.toLocaleString();
+                                                            })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="col-span-1">
                                                     <label className={`text-xs font-bold mb-2 block ${validation.isDuplicate ? 'text-red-600' : 'text-slate-500'} flex justify-between`}>
@@ -683,9 +694,21 @@ const Purchases: React.FC = () => {
                         </div>
 
                         <div className="flex-shrink-0 flex flex-col md:flex-row justify-between items-center mt-6 pt-4 border-t border-slate-200">
-                           <div className="text-xl md:text-2xl font-bold text-slate-700 w-full md:w-auto text-center md:text-right mb-4 md:mb-0">
-                                <span>مجموع کل ({currency === 'USD' ? 'دلار' : (currency === 'IRT' ? 'تومان' : 'افغانی')}): </span>
-                                <span className="text-blue-600">{totalAmount.toLocaleString()} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : 'AFN')}</span>
+                           <div className="flex flex-col items-center md:items-start w-full md:w-auto mb-4 md:mb-0">
+                                <div className="text-xl md:text-2xl font-bold text-slate-700">
+                                     <span>مجموع کل ({storeSettings.currencyConfigs[currency]?.name || currency}): </span>
+                                     <span className="text-blue-600">{totalAmount.toLocaleString()} {storeSettings.currencyConfigs[currency]?.symbol || currency}</span>
+                                </div>
+                                {currency !== storeSettings.baseCurrency && exchangeRate && (
+                                    <div className="text-sm font-bold text-slate-400 mt-1">
+                                        معادل: {(() => {
+                                            const config = storeSettings.currencyConfigs[currency];
+                                            const rate = Number(exchangeRate);
+                                            const converted = config?.method === 'multiply' ? totalAmount * rate : totalAmount / rate;
+                                            return Math.round(converted).toLocaleString();
+                                        })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
+                                    </div>
+                                )}
                            </div>
                            <div className="flex w-full md:w-auto space-x-3 space-x-reverse">
                                <button type="button" onClick={handleCloseModal} className="flex-1 px-6 py-3 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors font-semibold">لغو</button>

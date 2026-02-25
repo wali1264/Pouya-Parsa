@@ -8,25 +8,27 @@ interface PriceEditorProps {
     item: InvoiceItem;
     currency: 'AFN' | 'USD' | 'IRT';
     exchangeRate: string;
+    storeSettings: StoreSettings;
     onSave: (afnPrice: number) => void;
     onCancel: () => void;
 }
 
-const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, exchangeRate, onSave, onCancel }) => {
+const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, exchangeRate, storeSettings, onSave, onCancel }) => {
+    const config = storeSettings.currencyConfigs[currency];
     const rate = Number(exchangeRate) || 1;
     const currentPriceAFN = item.finalPrice !== undefined ? item.finalPrice : item.salePrice;
     
     // Initial value in transactional currency
-    const initialDisplay = currency === 'AFN' ? currentPriceAFN : 
-                          (currency === 'IRT' ? currentPriceAFN * rate : currentPriceAFN / rate);
+    const initialDisplay = currency === storeSettings.baseCurrency ? currentPriceAFN : 
+                          (config?.method === 'multiply' ? currentPriceAFN * rate : currentPriceAFN / rate);
 
     const [priceStr, setPriceStr] = useState(String(Math.round(initialDisplay * 1000) / 1000));
     
     const handleSave = () => {
         const entered = Number(priceStr);
         // Convert back to AFN for storage
-        const afnPrice = currency === 'AFN' ? entered :
-                         (currency === 'IRT' ? entered / rate : entered * rate);
+        const afnPrice = currency === storeSettings.baseCurrency ? entered :
+                         (config?.method === 'multiply' ? entered / rate : entered * rate);
         onSave(afnPrice);
     };
     
@@ -74,18 +76,19 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
     currency, exchangeRate
 }) => {
     
+    const config = storeSettings.currencyConfigs[currency];
     const rate = Number(exchangeRate) || 1;
     const priceAFN = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
     const originalPriceAFN = item.type === 'product' ? item.salePrice : item.price;
 
     // Convert prices for display
-    const displayPrice = currency === 'AFN' ? priceAFN : 
-                        (currency === 'IRT' ? priceAFN * rate : priceAFN / rate);
+    const displayPrice = currency === storeSettings.baseCurrency ? priceAFN : 
+                        (config?.method === 'multiply' ? priceAFN * rate : priceAFN / rate);
     
-    const displayOriginalPrice = currency === 'AFN' ? originalPriceAFN : 
-                                (currency === 'IRT' ? originalPriceAFN * rate : originalPriceAFN / rate);
+    const displayOriginalPrice = currency === storeSettings.baseCurrency ? originalPriceAFN : 
+                                (config?.method === 'multiply' ? originalPriceAFN * rate : originalPriceAFN / rate);
 
-    const currencySuffix = currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : 'افغانی');
+    const currencySuffix = config?.name || currency;
 
     return (
         <div className={`mb-3 p-3 bg-white/90 rounded-xl shadow-sm border border-gray-200/60 transition-all duration-300 ${isEditingPrice ? 'ring-2 ring-blue-500 z-10 relative' : ''}`}>
@@ -141,6 +144,7 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
                     item={item as InvoiceItem}
                     currency={currency}
                     exchangeRate={exchangeRate}
+                    storeSettings={storeSettings}
                     onSave={onSavePrice}
                     onCancel={onCancelPriceEdit}
                 />
