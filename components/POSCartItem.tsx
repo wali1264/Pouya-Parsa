@@ -106,6 +106,19 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
                             <span className="font-bold text-slate-600">{displayPrice.toLocaleString()} {currencySuffix}</span>
                         )}
                         
+                        {item.type === 'product' && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                                (خرید: {(() => {
+                                    const batches = (item as InvoiceItem).batches || [];
+                                    const latestBatch = [...batches].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())[0];
+                                    if (!latestBatch) return '-';
+                                    const pPrice = latestBatch.purchasePrice;
+                                    // Always show purchase price in base currency for reference
+                                    return pPrice.toLocaleString() + ' ' + (storeSettings.currencyConfigs[storeSettings.baseCurrency]?.symbol || storeSettings.baseCurrency);
+                                })()})
+                            </span>
+                        )}
+                        
                         {item.type === 'product' && !isEditingPrice && hasPermission('pos:apply_discount') && (
                             <button onClick={onStartPriceEdit} className="p-1 rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-blue-600">
                                 <EditIcon className="w-4 h-4"/>

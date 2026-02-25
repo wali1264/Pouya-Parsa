@@ -144,9 +144,9 @@ const SuppliersTab = () => {
                                 <td className="p-4 text-lg text-slate-600">{s.phone}</td>
                                 <td className="p-4 text-md font-black" dir="ltr">
                                     <div className="flex flex-col gap-1 items-center">
-                                        <span className="text-red-600">{Math.round(s.balanceAFN || 0).toLocaleString()} {baseCurrencyName}</span>
-                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(s.balanceUSD || 0).toLocaleString()} $</span>
-                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(s.balanceIRT || 0).toLocaleString()} تومان</span>
+                                        <span className="text-red-600">{Math.round(s.balanceAFN || 0).toLocaleString()} {storeSettings.currencyConfigs['AFN']?.name || 'افغانی'}</span>
+                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(s.balanceUSD || 0).toLocaleString()} {storeSettings.currencyConfigs['USD']?.symbol || '$'}</span>
+                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(s.balanceIRT || 0).toLocaleString()} {storeSettings.currencyConfigs['IRT']?.name || 'تومان'}</span>
                                     </div>
                                 </td>
                                 <td className="p-4">
@@ -172,7 +172,11 @@ const SuppliersTab = () => {
                         <div className="mt-4 pt-4 border-t border-dashed border-slate-200 flex justify-between items-center">
                             <div className="text-right">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">بدهی ما</p>
-                                <div className="flex flex-col items-start font-black text-sm" dir="ltr"><p className="text-red-600 text-base">{Math.round(s.balanceAFN || 0).toLocaleString()} {baseCurrency}</p><p className="text-blue-600">{(s.balanceUSD || 0).toLocaleString()} $</p><p className="text-orange-600">{(s.balanceIRT || 0).toLocaleString()} IRT</p></div>
+                                <div className="flex flex-col items-start font-black text-sm" dir="ltr">
+                                    <p className="text-red-600 text-base">{Math.round(s.balanceAFN || 0).toLocaleString()} {storeSettings.currencyConfigs['AFN']?.name || 'افغانی'}</p>
+                                    <p className="text-blue-600">{(s.balanceUSD || 0).toLocaleString()} {storeSettings.currencyConfigs['USD']?.symbol || '$'}</p>
+                                    <p className="text-orange-600">{(s.balanceIRT || 0).toLocaleString()} {storeSettings.currencyConfigs['IRT']?.name || 'تومان'}</p>
+                                </div>
                             </div>
                             <button onClick={() => handleOpenPayModal(s)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-lg active:shadow-none transition-all">ثبت پرداخت</button>
                         </div>
@@ -315,9 +319,9 @@ const PayrollTab = () => {
                             <th className="p-4 font-bold text-slate-700"></th>
                             <th className="p-4 font-bold text-slate-700 text-right">نام کارمند</th>
                             <th className="p-4 font-bold text-slate-700">حقوق ماهانه</th>
-                            <th className="p-4 font-bold text-slate-700">مانده (افغانی)</th>
-                            <th className="p-4 font-bold text-slate-700">مانده (دلار)</th>
-                            <th className="p-4 font-bold text-slate-700">مانده (تومان)</th>
+                            <th className="p-4 font-bold text-slate-700">مانده ({storeSettings.currencyConfigs['AFN']?.name || 'افغانی'})</th>
+                            <th className="p-4 font-bold text-slate-700">مانده ({storeSettings.currencyConfigs['USD']?.name || 'دلار'})</th>
+                            <th className="p-4 font-bold text-slate-700">مانده ({storeSettings.currencyConfigs['IRT']?.name || 'تومان'})</th>
                             <th className="p-4 font-bold text-slate-700">ثبت مساعده / پاداش</th>
                         </tr>
                     </thead>
@@ -591,9 +595,9 @@ const CustomersTab = () => {
                                 <td className="p-4 text-md text-slate-600">{c.phone}</td>
                                 <td className="p-4 text-md font-black" dir="ltr">
                                     <div className="flex flex-col gap-1 items-center">
-                                        <span className="text-emerald-600">{Math.round(c.balanceAFN || 0).toLocaleString()} {baseCurrencyName}</span>
-                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(c.balanceUSD || 0).toLocaleString()} $</span>
-                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(c.balanceIRT || 0).toLocaleString()} تومان</span>
+                                        <span className="text-emerald-600">{Math.round(c.balanceAFN || 0).toLocaleString()} {storeSettings.currencyConfigs['AFN']?.name || 'افغانی'}</span>
+                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{(c.balanceUSD || 0).toLocaleString()} {storeSettings.currencyConfigs['USD']?.symbol || '$'}</span>
+                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{(c.balanceIRT || 0).toLocaleString()} {storeSettings.currencyConfigs['IRT']?.name || 'تومان'}</span>
                                     </div>
                                 </td>
                                 <td className="p-4">
@@ -637,9 +641,9 @@ const CustomersTab = () => {
                             <div className="text-right">
                                 <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">طلب ما</p>
                                 <div className="flex flex-col items-start font-black text-sm" dir="ltr">
-                                    <p className="text-emerald-600 text-base">{Math.round(c.balanceAFN || 0).toLocaleString()} {baseCurrency}</p>
-                                    <p className="text-blue-600">{(c.balanceUSD || 0).toLocaleString()} $</p>
-                                    <p className="text-orange-600">{(c.balanceIRT || 0).toLocaleString()} IRT</p>
+                                    <p className="text-emerald-600 text-base">{Math.round(c.balanceAFN || 0).toLocaleString()} {storeSettings.currencyConfigs['AFN']?.name || 'افغانی'}</p>
+                                    <p className="text-blue-600">{(c.balanceUSD || 0).toLocaleString()} {storeSettings.currencyConfigs['USD']?.symbol || '$'}</p>
+                                    <p className="text-orange-600">{(c.balanceIRT || 0).toLocaleString()} {storeSettings.currencyConfigs['IRT']?.name || 'تومان'}</p>
                                 </div>
                             </div>
                             <button onClick={() => handleOpenPayModal(c)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-emerald-100 active:shadow-none transition-all">ثبت دریافت</button>
