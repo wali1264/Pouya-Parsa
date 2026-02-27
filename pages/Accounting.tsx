@@ -828,7 +828,7 @@ const ExpensesTab = () => {
     const convertedExpense = useMemo(() => {
         if (!expenseAmount || !expenseRate || Number(expenseRate) <= 0) return 0;
         const config = storeSettings.currencyConfigs[expenseCurrency];
-        return config.method === 'multiply' ? Number(expenseAmount) * Number(expenseRate) : Number(expenseAmount) / Number(expenseRate);
+        return config.method === 'multiply' ? Number(expenseAmount) / Number(expenseRate) : Number(expenseAmount) * Number(expenseRate);
     }, [expenseAmount, expenseRate, expenseCurrency, storeSettings.currencyConfigs]);
 
     const handleAddExpenseForm = (e: React.FormEvent<HTMLFormElement>) => {

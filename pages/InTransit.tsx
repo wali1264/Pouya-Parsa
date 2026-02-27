@@ -371,7 +371,7 @@ const InTransit: React.FC = () => {
 
     const handleAddItem = (product: Product) => { setItems(prev => [...prev, { productId: product.id, quantity: '', purchasePrice: '', lotNumber: '', expiryDate: '', showExpiry: false }]); setProductSearch(''); };
 
-    const totalInCurrency = useMemo(() => Math.round(items.reduce((t, i) => t + (Number(i.purchasePrice || 0) * Number(i.quantity || 0)), 0)), [items]);
+    const totalInCurrency = useMemo(() => items.reduce((t, i) => t + (Number(i.purchasePrice || 0) * Number(i.quantity || 0)), 0), [items]);
 
     const filteredInvoices = useMemo(() => {
         return inTransitInvoices.filter(inv => {
@@ -388,7 +388,7 @@ const InTransit: React.FC = () => {
             const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
             const amountBase = (inv.currency === storeSettings.baseCurrency) ? inv.totalAmount : 
                               (config.method === 'multiply' ? inv.totalAmount / rate : inv.totalAmount * rate);
-            return sum + Math.round(amountBase);
+            return sum + amountBase;
         }, 0);
     }, [filteredInvoices, storeSettings]);
 
@@ -596,7 +596,7 @@ const InTransit: React.FC = () => {
                                                                 const val = Number(item.purchasePrice);
                                                                 const rate = Number(exchangeRate);
                                                                 const converted = config?.method === 'multiply' ? val / rate : val * rate;
-                                                                return Math.round(converted).toLocaleString();
+                                                                return converted < 1 ? converted.toFixed(4) : converted.toLocaleString(undefined, { maximumFractionDigits: 2 });
                                                             })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                                         </p>
                                                     )}
@@ -619,7 +619,7 @@ const InTransit: React.FC = () => {
                                             const config = storeSettings.currencyConfigs[currency];
                                             const rate = Number(exchangeRate);
                                             const converted = config?.method === 'multiply' ? totalInCurrency / rate : totalInCurrency * rate;
-                                            return Math.round(converted).toLocaleString();
+                                            return converted < 1 ? converted.toFixed(4) : converted.toLocaleString(undefined, { maximumFractionDigits: 2 });
                                         })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                     </p>
                                 )}
