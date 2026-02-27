@@ -43,7 +43,9 @@ const ProductSide: React.FC<{
     hasPermission: (permission: string) => boolean,
     currency: 'AFN' | 'USD' | 'IRT',
     exchangeRate: string,
-    onMobileCheckout: () => void
+    onMobileCheckout: () => void,
+    saleInvoices: SaleInvoice[],
+    selectedCustomerId: string
 }> = ({
     searchContainerRef, memoFileInputRef, searchInputRef, searchTerm, setSearchTerm,
     setIsSearchFocused, handleTakePhotoClick, handlePhotoTaken, isBarcodeModeActive,
@@ -51,7 +53,7 @@ const ProductSide: React.FC<{
     isSearchFocused, dropdownProducts, handleDropdownItemClick,
     addToCart, storeSettings, cart, editingPriceItemId, setEditingPriceItemId,
     updateCartItemQuantity, removeFromCart, updateCartItemFinalPrice, hasPermission,
-    currency, exchangeRate, onMobileCheckout
+    currency, exchangeRate, onMobileCheckout, saleInvoices, selectedCustomerId
 }) => {
     
     const baseCurrency = storeSettings.baseCurrency || 'AFN';
@@ -61,6 +63,11 @@ const ProductSide: React.FC<{
         const price = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
         return total + (price * item.quantity);
     }, 0);
+
+    const rateNum = Number(exchangeRate) || 1;
+    const config = storeSettings.currencyConfigs[currency];
+    const convertedTotal = currency === baseCurrency ? cartTotalBase : 
+                          (config?.method === 'multiply' ? cartTotalBase / rateNum : cartTotalBase * rateNum);
 
     return (
     <>
@@ -141,6 +148,8 @@ const ProductSide: React.FC<{
                            onCancelPriceEdit={() => setEditingPriceItemId(null)}
                            currency={currency}
                            exchangeRate={exchangeRate}
+                           saleInvoices={saleInvoices}
+                           selectedCustomerId={selectedCustomerId}
                        />
                     ))}
                  </div>
@@ -163,7 +172,12 @@ const ProductSide: React.FC<{
                     </div>
                     <div>
                         <p className="text-[10px] text-blue-100 font-bold">مجموع فعلی سبد:</p>
-                        <p className="text-white font-black">{Math.round(cartTotalBase).toLocaleString()} {baseCurrencyName}</p>
+                        <p className="text-white font-black">
+                            {convertedTotal < 1 ? convertedTotal.toFixed(4) : convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyConfigs[currency]?.name || currency)}
+                        </p>
+                        {currency !== baseCurrency && (
+                            <p className="text-[8px] text-blue-200 font-bold">معادل: {Math.round(cartTotalBase).toLocaleString()} {baseCurrencyName}</p>
+                        )}
                     </div>
                 </div>
                 <button 
@@ -187,7 +201,7 @@ const CartSide: React.FC<any> = ({
     setSelectedCustomerId, customers, selectedSupplierId, setSelectedSupplierId, suppliers,
     isSupplierMenuOpen, setIsSupplierMenuOpen, totalAmount, completeSale, setInvoiceDateRange,
     handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
-    isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
+    isProcessing, currency, setCurrency, exchangeRate, setExchangeRate, saleInvoices
 }) => {
     
     const rateNum = Number(exchangeRate) || 1;
@@ -196,7 +210,7 @@ const CartSide: React.FC<any> = ({
     const config = storeSettings.currencyConfigs[currency];
     
     const convertedTotal = currency === baseCurrency ? totalAmount : 
-                          (config.method === 'multiply' ? Math.round(totalAmount * rateNum) : totalAmount / rateNum);
+                          (config.method === 'multiply' ? totalAmount / rateNum : totalAmount * rateNum);
 
     const selectedCustomer = customers.find((c: Customer) => c.id === selectedCustomerId);
     const isOverLimit = selectedCustomer && selectedCustomer.creditLimit > 0 && (selectedCustomer.balance + totalAmount) > selectedCustomer.creditLimit;
@@ -303,6 +317,8 @@ const CartSide: React.FC<any> = ({
                            onCancelPriceEdit={() => setEditingPriceItemId(null)}
                            currency={currency}
                            exchangeRate={exchangeRate}
+                           saleInvoices={saleInvoices}
+                           selectedCustomerId={selectedCustomerId}
                        />
                     ))
                 )}
@@ -362,7 +378,7 @@ const CartSide: React.FC<any> = ({
                         <span className="text-lg font-bold text-slate-500">مبلغ کل:</span>
                         <div className="flex flex-col items-end">
                             <span className="text-2xl font-extrabold text-blue-700">
-                                {convertedTotal.toLocaleString()} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyConfigs[currency]?.name || currency)}
+                                {convertedTotal < 1 ? convertedTotal.toFixed(4) : convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyConfigs[currency]?.name || currency)}
                             </span>
                             {currency !== baseCurrency && (
                                 <span className="text-[10px] font-bold text-slate-400">
@@ -869,27 +885,29 @@ const POS: React.FC = () => {
                         updateCartItemQuantity: contextUpdateQuantity, removeFromCart: contextRemoveFromCart, 
                         updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission,
                         currency, exchangeRate,
-                        onMobileCheckout: () => setMobileView('cart')
+                        onMobileCheckout: () => setMobileView('cart'),
+                        saleInvoices, selectedCustomerId
                       }}
                     />
                 </div>
 
                 {/* Cart View */}
                 <div className={`w-full md:w-1/2 bg-white/60 backdrop-blur-xl p-3 md:p-6 flex-col h-full border-r border-gray-200/60 md:shadow-2xl ${mobileView === 'cart' ? 'flex' : 'hidden'} md:flex`}>
-                    <CartSide 
-                       {...{
-                         activeTab, setActiveTab, cart, filteredInvoices, services, setIsGalleryOpen, memoImages,
-                         editingSaleInvoiceId: context.editingSaleInvoiceId, handleCancelEdit: context.cancelEditSale, updateQuantity: contextUpdateQuantity, 
-                         removeFromCart: contextRemoveFromCart, editingPriceItemId,
-                         setEditingPriceItemId, updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission, 
-                         selectedCustomerId, setSelectedCustomerId, customers, 
-                         selectedSupplierId, setSelectedSupplierId, suppliers,
-                         isSupplierMenuOpen, setIsSupplierMenuOpen,
-                         totalAmount: totalAmountBase, completeSale, setInvoiceDateRange,
-                         handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
-                         isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
-                       }}
-                    />
+                     <CartSide 
+                        {...{
+                          activeTab, setActiveTab, cart, filteredInvoices, services, setIsGalleryOpen, memoImages,
+                          editingSaleInvoiceId: context.editingSaleInvoiceId, handleCancelEdit: context.cancelEditSale, updateQuantity: contextUpdateQuantity, 
+                          removeFromCart: contextRemoveFromCart, editingPriceItemId,
+                          setEditingPriceItemId, updateCartItemFinalPrice: contextUpdateCartItemFinalPrice, hasPermission: context.hasPermission, 
+                          selectedCustomerId, setSelectedCustomerId, customers, 
+                          selectedSupplierId, setSelectedSupplierId, suppliers,
+                          isSupplierMenuOpen, setIsSupplierMenuOpen,
+                          totalAmount: totalAmountBase, completeSale, setInvoiceDateRange,
+                          handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
+                          isProcessing, currency, setCurrency, exchangeRate, setExchangeRate,
+                          saleInvoices
+                        }}
+                     />
                 </div>
             </div>
             

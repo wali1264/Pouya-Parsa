@@ -626,8 +626,8 @@ const Purchases: React.FC = () => {
                                                                 const config = storeSettings.currencyConfigs[currency];
                                                                 const val = Number(item.purchasePrice);
                                                                 const rate = Number(exchangeRate);
-                                                                const converted = config?.method === 'multiply' ? val / rate : val * rate;
-                                                                return Math.round(converted).toLocaleString();
+                                                                const converted = config?.method === 'multiply' ? val * rate : val / rate;
+                                                                return converted < 1 ? converted.toFixed(4) : converted.toLocaleString(undefined, { maximumFractionDigits: 2 });
                                                             })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                                         </p>
                                                     )}
@@ -704,8 +704,8 @@ const Purchases: React.FC = () => {
                                         معادل: {(() => {
                                             const config = storeSettings.currencyConfigs[currency];
                                             const rate = Number(exchangeRate);
-                                            const converted = config?.method === 'multiply' ? totalAmount / rate : totalAmount * rate;
-                                            return Math.round(converted).toLocaleString();
+                                            const converted = config?.method === 'multiply' ? totalAmount * rate : totalAmount / rate;
+                                            return converted < 1 ? converted.toFixed(4) : converted.toLocaleString(undefined, { maximumFractionDigits: 2 });
                                         })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                     </div>
                                 )}

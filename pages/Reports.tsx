@@ -204,7 +204,9 @@ const Reports: React.FC = () => {
         return { 
             totalAFN: filtered.reduce((s, t) => {
                 const rate = (t as any).exchangeRate || 1;
-                return s + (t.amount * ( (t as any).currency === 'USD' ? rate : 1));
+                const config = storeSettings.currencyConfigs[(t as any).currency || storeSettings.baseCurrency];
+                const amountBase = (t as any).currency === storeSettings.baseCurrency ? t.amount : (config?.method === 'multiply' ? t.amount * rate : t.amount / rate);
+                return s + amountBase;
             }, 0), 
             count: filtered.length,
             details: filtered.map(t => ({ ...t, customerName: customers.find(c => c.id === t.customerId)?.name || 'ناشناس' }))
@@ -225,8 +227,9 @@ const Reports: React.FC = () => {
 
             filtered.forEach(inv => {
                 const rate = inv.exchangeRate || 1;
+                const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
                 inv.items.forEach(item => {
-                    const priceAFN = inv.currency === 'IRT' ? item.purchasePrice / rate : item.purchasePrice * rate;
+                    const priceAFN = inv.currency === storeSettings.baseCurrency ? item.purchasePrice : (config?.method === 'multiply' ? item.purchasePrice * rate : item.purchasePrice / rate);
                     const valueAFN = priceAFN * item.quantity;
                     const existing = results.get(item.productId);
                     if (existing) {

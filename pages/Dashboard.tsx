@@ -156,13 +156,13 @@ const Dashboard: React.FC = () => {
             return invTime >= startOfDay && invTime <= endOfDay;
         });
 
-        const sales = todayInvoices.filter(inv => inv.type === 'sale').reduce((sum, inv) => sum + inv.totalAmount, 0);
-        const returns = todayInvoices.filter(inv => inv.type === 'return').reduce((sum, inv) => sum + inv.totalAmount, 0);
+        const sales = todayInvoices.filter(inv => inv.type === 'sale').reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
+        const returns = todayInvoices.filter(inv => inv.type === 'return').reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
         const creditInvoices = todayInvoices.filter(inv => inv.customerId && inv.type === 'sale');
-        const creditSales = creditInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+        const creditSales = creditInvoices.reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
         
         const supplierIntermediaryInvoices = todayInvoices.filter(inv => inv.supplierIntermediaryId && inv.type === 'sale');
-        const supplierIntermediarySales = supplierIntermediaryInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+        const supplierIntermediarySales = supplierIntermediaryInvoices.reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
 
         const cashSales = sales - creditSales - supplierIntermediarySales - returns;
             

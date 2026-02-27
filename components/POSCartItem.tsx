@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import type { InvoiceItem, CartItem, StoreSettings } from '../types';
-import { EditIcon, TrashIcon, CheckIcon, XIcon } from './icons';
+import React, { useState, useMemo } from 'react';
+import type { InvoiceItem, CartItem, StoreSettings, SaleInvoice } from '../types';
+import { EditIcon, TrashIcon, CheckIcon, XIcon, HistoryIcon } from './icons';
 import PackageUnitInput from './PackageUnitInput';
 import { toEnglishDigits } from '../utils/formatters';
 
@@ -20,7 +20,7 @@ const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, excha
     
     // Initial value in transactional currency
     const initialDisplay = currency === storeSettings.baseCurrency ? currentPriceAFN : 
-                          (config?.method === 'multiply' ? currentPriceAFN * rate : currentPriceAFN / rate);
+                          (config?.method === 'multiply' ? currentPriceAFN / rate : currentPriceAFN * rate);
 
     const [priceStr, setPriceStr] = useState(String(Math.round(initialDisplay * 1000) / 1000));
     
@@ -28,7 +28,7 @@ const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, excha
         const entered = Number(priceStr);
         // Convert back to AFN for storage
         const afnPrice = currency === storeSettings.baseCurrency ? entered :
-                         (config?.method === 'multiply' ? entered / rate : entered * rate);
+                         (config?.method === 'multiply' ? entered * rate : entered / rate);
         onSave(afnPrice);
     };
     
@@ -69,11 +69,13 @@ interface POSCartItemProps {
     onCancelPriceEdit: () => void;
     currency: 'AFN' | 'USD' | 'IRT';
     exchangeRate: string;
+    saleInvoices: SaleInvoice[];
+    selectedCustomerId: string;
 }
 
 const POSCartItem: React.FC<POSCartItemProps> = ({
     item, isEditingPrice, storeSettings, hasPermission, onQuantityChange, onRemove, onStartPriceEdit, onSavePrice, onCancelPriceEdit,
-    currency, exchangeRate
+    currency, exchangeRate, saleInvoices, selectedCustomerId
 }) => {
     
     const config = storeSettings.currencyConfigs[currency];
@@ -83,12 +85,34 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
 
     // Convert prices for display
     const displayPrice = currency === storeSettings.baseCurrency ? priceAFN : 
-                        (config?.method === 'multiply' ? priceAFN * rate : priceAFN / rate);
+                        (config?.method === 'multiply' ? priceAFN / rate : priceAFN * rate);
     
     const displayOriginalPrice = currency === storeSettings.baseCurrency ? originalPriceAFN : 
-                                (config?.method === 'multiply' ? originalPriceAFN * rate : originalPriceAFN / rate);
+                                (config?.method === 'multiply' ? originalPriceAFN / rate : originalPriceAFN * rate);
 
     const currencySuffix = config?.name || currency;
+
+    // Logic for finding the last sale price to this customer
+    const lastSaleToCustomer = useMemo(() => {
+        if (!selectedCustomerId || item.type !== 'product') return null;
+        
+        // Find the most recent sale invoice for this customer that contains this product
+        const lastInvoice = saleInvoices
+            .filter(inv => inv.customerId === selectedCustomerId && inv.type === 'sale')
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            .find(inv => inv.items.some(it => it.id === item.id));
+
+        if (!lastInvoice) return null;
+
+        const lastItem = lastInvoice.items.find(it => it.id === item.id);
+        if (!lastItem) return null;
+
+        return {
+            price: lastItem.finalPrice ?? lastItem.salePrice,
+            date: lastInvoice.timestamp,
+            currency: lastInvoice.currency
+        };
+    }, [selectedCustomerId, item.id, item.type, saleInvoices]);
 
     return (
         <div className={`mb-3 p-3 bg-white/90 rounded-xl shadow-sm border border-gray-200/60 transition-all duration-300 ${isEditingPrice ? 'ring-2 ring-blue-500 z-10 relative' : ''}`}>
@@ -107,25 +131,34 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
                         )}
                         
                         {item.type === 'product' && (
-                            <div className="flex flex-col">
-                                {(() => {
-                                    const deductions = (item as InvoiceItem).batchDeductions || [];
-                                    const batches = (item as InvoiceItem).batches || [];
-                                    
-                                    // Get unique purchase prices from the allocated batches
-                                    const uniquePrices = Array.from(new Set(
-                                        deductions.map(d => batches.find(b => b.id === d.batchId)?.purchasePrice)
-                                            .filter(p => p !== undefined)
-                                    ));
+                            <div className="flex flex-col w-full">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {(() => {
+                                        const deductions = (item as InvoiceItem).batchDeductions || [];
+                                        const batches = (item as InvoiceItem).batches || [];
+                                        
+                                        const uniquePrices = Array.from(new Set(
+                                            deductions.map(d => batches.find(b => b.id === d.batchId)?.purchasePrice)
+                                                .filter(p => p !== undefined)
+                                        ));
 
-                                    if (uniquePrices.length === 0) return <span className="text-[10px] text-slate-400 font-medium">(خرید: -)</span>;
+                                        if (uniquePrices.length === 0) return <span className="text-[10px] text-slate-400 font-medium">(خرید: -)</span>;
 
-                                    return uniquePrices.map((pPrice, idx) => (
-                                        <span key={idx} className="text-[10px] text-slate-400 font-medium leading-tight">
-                                            (خرید: {pPrice?.toLocaleString()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.symbol || storeSettings.baseCurrency})
-                                        </span>
-                                    ));
-                                })()}
+                                        return uniquePrices.map((pPrice, idx) => (
+                                            <span key={idx} className="text-[10px] text-slate-400 font-medium leading-tight">
+                                                (خرید: {pPrice?.toLocaleString()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.symbol || storeSettings.baseCurrency})
+                                            </span>
+                                        ));
+                                    })()}
+                                </div>
+
+                                {lastSaleToCustomer && (
+                                    <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md w-fit border border-amber-100">
+                                        <HistoryIcon className="w-3 h-3" />
+                                        <span>آخرین فروش ({new Date(lastSaleToCustomer.date).toLocaleDateString('fa-IR')}):</span>
+                                        <span>{lastSaleToCustomer.price.toLocaleString()} {storeSettings.currencyConfigs[lastSaleToCustomer.currency]?.name || lastSaleToCustomer.currency}</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                         

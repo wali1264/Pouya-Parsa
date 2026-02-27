@@ -45,7 +45,7 @@ const InTransitPaymentModal: React.FC<{
         const a = Number(toEnglishDigits(amount).replace(/[^0-9.]/g, ''));
         const r = Number(toEnglishDigits(exchangeRate).replace(/[^0-9.]/g, '')) || 1;
         const config = storeSettings.currencyConfigs[currency];
-        return currency === storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / r : a * r);
+        return currency === storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a * r : a / r);
     }, [amount, exchangeRate, currency, storeSettings.currencyConfigs]);
 
     return (
@@ -387,7 +387,7 @@ const InTransit: React.FC = () => {
             const rate = inv.exchangeRate || 1;
             const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
             const amountBase = (inv.currency === storeSettings.baseCurrency) ? inv.totalAmount : 
-                              (config.method === 'multiply' ? inv.totalAmount / rate : inv.totalAmount * rate);
+                              (config.method === 'multiply' ? inv.totalAmount * rate : inv.totalAmount / rate);
             return sum + Math.round(amountBase);
         }, 0);
     }, [filteredInvoices, storeSettings]);

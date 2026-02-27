@@ -49,7 +49,7 @@ export const formatCurrency = (amount: number, settings: StoreSettings, customCu
     if (targetCurrency && targetCurrency !== settings.baseCurrency && exchangeRate) {
         const config = settings.currencyConfigs[targetCurrency];
         if (config) {
-            displayAmount = config.method === 'multiply' ? safeAmount * exchangeRate : safeAmount / exchangeRate;
+            displayAmount = config.method === 'multiply' ? safeAmount / exchangeRate : safeAmount * exchangeRate;
             currencyName = config.name || targetCurrency;
         }
     }
