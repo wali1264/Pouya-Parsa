@@ -107,16 +107,26 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
                         )}
                         
                         {item.type === 'product' && (
-                            <span className="text-[10px] text-slate-400 font-medium">
-                                (خرید: {(() => {
+                            <div className="flex flex-col">
+                                {(() => {
+                                    const deductions = (item as InvoiceItem).batchDeductions || [];
                                     const batches = (item as InvoiceItem).batches || [];
-                                    const latestBatch = [...batches].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())[0];
-                                    if (!latestBatch) return '-';
-                                    const pPrice = latestBatch.purchasePrice;
-                                    // Always show purchase price in base currency for reference
-                                    return pPrice.toLocaleString() + ' ' + (storeSettings.currencyConfigs[storeSettings.baseCurrency]?.symbol || storeSettings.baseCurrency);
-                                })()})
-                            </span>
+                                    
+                                    // Get unique purchase prices from the allocated batches
+                                    const uniquePrices = Array.from(new Set(
+                                        deductions.map(d => batches.find(b => b.id === d.batchId)?.purchasePrice)
+                                            .filter(p => p !== undefined)
+                                    ));
+
+                                    if (uniquePrices.length === 0) return <span className="text-[10px] text-slate-400 font-medium">(خرید: -)</span>;
+
+                                    return uniquePrices.map((pPrice, idx) => (
+                                        <span key={idx} className="text-[10px] text-slate-400 font-medium leading-tight">
+                                            (خرید: {pPrice?.toLocaleString()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.symbol || storeSettings.baseCurrency})
+                                        </span>
+                                    ));
+                                })()}
+                            </div>
                         )}
                         
                         {item.type === 'product' && !isEditingPrice && hasPermission('pos:apply_discount') && (

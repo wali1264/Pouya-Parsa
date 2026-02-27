@@ -108,7 +108,6 @@ const Inventory: React.FC = () => {
                             <tr>
                                 <th className="p-5 text-md font-bold text-slate-700 tracking-wider"></th>
                                 <th className="p-5 text-md font-bold text-slate-700 tracking-wider">نام محصول</th>
-                                <th className="p-5 text-md font-bold text-slate-700 tracking-wider">قیمت خرید</th>
                                 <th className="p-5 text-md font-bold text-slate-700 tracking-wider">قیمت فروش</th>
                                 <th className="p-5 text-md font-bold text-slate-700 tracking-wider">موجودی کل</th>
                                 <th className="p-5 text-md font-bold text-slate-700 tracking-wider">عملیات</th>
@@ -129,12 +128,6 @@ const Inventory: React.FC = () => {
                                             </button>
                                         </td>
                                         <td className="p-4 font-semibold text-slate-800 text-lg">{product.name}</td>
-                                        <td className="p-4 text-slate-600 text-lg">
-                                            {(() => {
-                                                const latestBatch = [...product.batches].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())[0];
-                                                return latestBatch ? formatCurrency(latestBatch.purchasePrice, storeSettings) : '-';
-                                            })()}
-                                        </td>
                                         <td className="p-4 text-slate-700 text-lg">{formatCurrency(product.salePrice, storeSettings)}</td>
                                         <td className="p-4 text-slate-700 text-lg font-bold">{formatStockToPackagesAndUnits(totalStock, storeSettings, product.itemsPerPackage)}</td>
                                         <td className="p-4">
@@ -220,15 +213,6 @@ const Inventory: React.FC = () => {
                                 </div>
                             </div>
                             <div className="space-y-2 text-md">
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">قیمت خرید:</span> 
-                                    <span className="font-semibold text-slate-600">
-                                        {(() => {
-                                            const latestBatch = [...product.batches].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())[0];
-                                            return latestBatch ? formatCurrency(latestBatch.purchasePrice, storeSettings) : '-';
-                                        })()}
-                                    </span>
-                                </div>
                                 <div className="flex justify-between"><span className="text-slate-500">قیمت فروش:</span> <span className="font-semibold">{formatCurrency(product.salePrice, storeSettings)}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">موجودی کل:</span> <span className="font-bold">{formatStockToPackagesAndUnits(totalStock, storeSettings, product.itemsPerPackage)}</span></div>
                             </div>

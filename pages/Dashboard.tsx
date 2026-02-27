@@ -374,7 +374,14 @@ const Dashboard: React.FC = () => {
        </div>
       
       {/* Vital Stats - Horizontal Carousel on Mobile, Grid on Desktop */}
-      <div className="flex md:grid md:grid-cols-2 gap-4 md:gap-6 mb-10 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-4 -mx-4 px-4 md:mx-0 md:px-0">
+      <div className="flex md:grid md:grid-cols-3 gap-4 md:gap-6 mb-10 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-4 -mx-4 px-4 md:mx-0 md:px-0">
+        <StatCard 
+            title="فروش نقدی امروز" 
+            value={totalCashSalesToday.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} 
+            description={storeSettings.currencyName} 
+            color="text-emerald-600" 
+            icon={<POSIcon className="w-7 h-7 text-emerald-600" />}
+        />
         <StatCard 
             title="مجموع فروش امروز (خالص)" 
             value={totalSalesToday.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} 

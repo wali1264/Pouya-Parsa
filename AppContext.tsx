@@ -432,19 +432,74 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const addToCart = (item: any, type: any) => {
         let success = true;
         setState(prev => {
-            const existing = prev.cart.findIndex(i => i.id === item.id && i.type === type);
-            if (existing > -1) {
-                const up = [...prev.cart];
-                up[existing].quantity += 1;
-                return { ...prev, cart: up };
+            const existingIndex = prev.cart.findIndex(i => i.id === item.id && i.type === type);
+            let newCart = [...prev.cart];
+            if (existingIndex > -1) {
+                newCart[existingIndex].quantity += 1;
+            } else {
+                newCart.push({ ...item, quantity: 1, type } as any);
             }
-            return { ...prev, cart: [...prev.cart, { ...item, quantity: 1, type } as any] };
+
+            // Apply FIFO logic to all products in cart
+            const updatedCart = newCart.map(cartItem => {
+                if (cartItem.type === 'product') {
+                    const product = prev.products.find(p => p.id === cartItem.id);
+                    if (product) {
+                        // Simple FIFO for UI display
+                        let remaining = cartItem.quantity;
+                        const deductions: { batchId: string, quantity: number }[] = [];
+                        const sortedBatches = [...product.batches].sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+                        
+                        for (const b of sortedBatches) {
+                            if (remaining <= 0) break;
+                            const deduct = Math.min(b.stock, remaining);
+                            if (deduct > 0) {
+                                deductions.push({ batchId: b.id, quantity: deduct });
+                                remaining -= deduct;
+                            }
+                        }
+                        const totalCost = deductions.reduce((s, d) => s + (d.quantity * (product.batches.find(bx => bx.id === d.batchId)?.purchasePrice || 0)), 0);
+                        return { ...cartItem, batchDeductions: deductions, purchasePrice: deductions.length > 0 ? totalCost / cartItem.quantity : 0 };
+                    }
+                }
+                return cartItem;
+            });
+
+            return { ...prev, cart: updatedCart };
         });
         return { success, message: '' };
     };
 
     const updateCartItemQuantity = (id: string, type: any, qty: number) => {
-        setState(prev => ({ ...prev, cart: prev.cart.map(i => (i.id === id && i.type === type) ? { ...i, quantity: qty } : i).filter(i => i.quantity > 0) }));
+        setState(prev => {
+            const newCart = prev.cart.map(i => (i.id === id && i.type === type) ? { ...i, quantity: qty } : i).filter(i => i.quantity > 0);
+            
+            // Re-apply FIFO logic
+            const updatedCart = newCart.map(cartItem => {
+                if (cartItem.type === 'product') {
+                    const product = prev.products.find(p => p.id === cartItem.id);
+                    if (product) {
+                        let remaining = cartItem.quantity;
+                        const deductions: { batchId: string, quantity: number }[] = [];
+                        const sortedBatches = [...product.batches].sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+                        
+                        for (const b of sortedBatches) {
+                            if (remaining <= 0) break;
+                            const deduct = Math.min(b.stock, remaining);
+                            if (deduct > 0) {
+                                deductions.push({ batchId: b.id, quantity: deduct });
+                                remaining -= deduct;
+                            }
+                        }
+                        const totalCost = deductions.reduce((s, d) => s + (d.quantity * (product.batches.find(bx => bx.id === d.batchId)?.purchasePrice || 0)), 0);
+                        return { ...cartItem, batchDeductions: deductions, purchasePrice: deductions.length > 0 ? totalCost / cartItem.quantity : 0 };
+                    }
+                }
+                return cartItem;
+            });
+
+            return { ...prev, cart: updatedCart };
+        });
         return { success: true, message: '' };
     };
 
@@ -477,24 +532,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             });
         }
 
-        // 2. FIFO Calculation on Virtual Inventory
+        // 2. Finalize Deductions and Stock Updates
         const stockUpdates: {batchId: string, newStock: number}[] = [];
         const itemsWithBatches = cart.map(item => {
             if (item.type === 'product') {
                 const p = virtualProducts.find(x => x.id === item.id);
-                if (p) {
+                if (p && item.batchDeductions) {
+                    // Re-verify deductions against virtual stock (critical for Edit mode)
                     let remainingToDeduct = item.quantity;
-                    const deductions: { batchId: string, quantity: number }[] = [];
+                    const finalDeductions: { batchId: string, quantity: number }[] = [];
                     const sortedBatches = [...p.batches].sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
                     
                     for (const b of sortedBatches) {
                         if (remainingToDeduct <= 0) break;
                         const deduct = Math.min(b.stock, remainingToDeduct);
                         if (deduct > 0) {
-                            deductions.push({ batchId: b.id, quantity: deduct });
-                            b.stock -= deduct; // Update virtual stock
+                            finalDeductions.push({ batchId: b.id, quantity: deduct });
+                            b.stock -= deduct;
                             
-                            // Track final stock for this batch
                             const existingUpdate = stockUpdates.find(u => u.batchId === b.id);
                             if (existingUpdate) existingUpdate.newStock = b.stock;
                             else stockUpdates.push({ batchId: b.id, newStock: b.stock });
@@ -502,8 +557,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                             remainingToDeduct -= deduct;
                         }
                     }
-                    const totalCost = deductions.reduce((s, d) => s + (d.quantity * (p.batches.find(bx => bx.id === d.batchId)?.purchasePrice || 0)), 0);
-                    return { ...item, batchDeductions: deductions, purchasePrice: deductions.length > 0 ? totalCost / item.quantity : 0 };
+                    const totalCost = finalDeductions.reduce((s, d) => s + (d.quantity * (p.batches.find(bx => bx.id === d.batchId)?.purchasePrice || 0)), 0);
+                    return { ...item, batchDeductions: finalDeductions, purchasePrice: finalDeductions.length > 0 ? totalCost / item.quantity : 0 };
                 }
             }
             return item;

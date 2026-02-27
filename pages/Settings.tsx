@@ -220,6 +220,12 @@ const CustomizationTab: React.FC<TabProps> = ({ showToast }) => {
                                             <option value="multiply">ارز پایه × نرخ = {code} (ارز ضعیف‌تر)</option>
                                             <option value="divide">ارز پایه ÷ نرخ = {code} (ارز قوی‌تر)</option>
                                         </select>
+                                        <p className="text-[10px] text-slate-400 mt-1.5 font-medium leading-relaxed">
+                                            {formData.currencyConfigs[code].method === 'multiply' 
+                                                ? `در این حالت: هر ۱ ${formData.currencyConfigs[formData.baseCurrency].name} معادل چند ${formData.currencyConfigs[code].name} است؟`
+                                                : `در این حالت: هر ۱ ${formData.currencyConfigs[code].name} معادل چند ${formData.currencyConfigs[formData.baseCurrency].name} است؟`
+                                            }
+                                        </p>
                                     </div>
                                 </div>
                             </div>

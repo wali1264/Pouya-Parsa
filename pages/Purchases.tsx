@@ -342,7 +342,7 @@ const Purchases: React.FC = () => {
             return;
         }
 
-        if (currency !== 'AFN' && (!exchangeRate || Number(exchangeRate) <= 0)) {
+        if (currency !== storeSettings.baseCurrency && (!exchangeRate || Number(exchangeRate) <= 0)) {
             showToast("لطفاً نرخ ارز را وارد کنید.");
             return;
         }

@@ -24,25 +24,29 @@ const InTransitPaymentModal: React.FC<{
     onClose: () => void, 
     onConfirm: (amount: number, currency: 'AFN' | 'USD' | 'IRT', rate: number, description: string) => void 
 }> = ({ invoice, onClose, onConfirm }) => {
+    const { storeSettings } = useAppContext();
     const [amount, setAmount] = useState('');
-    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>(invoice.currency || 'AFN');
+    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>(invoice.currency || storeSettings.baseCurrency);
     const [exchangeRate, setExchangeRate] = useState(invoice.exchangeRate ? String(invoice.exchangeRate) : '');
     const [description, setDescription] = useState(`پیش‌پرداخت بابت فاکتور ${invoice.invoiceNumber || invoice.id.slice(0, 8)}`);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const a = Number(toEnglishDigits(amount).replace(/[^0-9.]/g, ''));
-        const r = currency === 'AFN' ? 1 : Number(toEnglishDigits(exchangeRate).replace(/[^0-9.]/g, ''));
-        if (a > 0 && (currency === 'AFN' || r > 0)) {
+        const r = currency === storeSettings.baseCurrency ? 1 : Number(toEnglishDigits(exchangeRate).replace(/[^0-9.]/g, ''));
+        if (a > 0 && (currency === storeSettings.baseCurrency || r > 0)) {
             onConfirm(a, currency, r, description);
+        } else if (currency !== storeSettings.baseCurrency && r <= 0) {
+            alert("لطفاً نرخ ارز را وارد کنید.");
         }
     };
 
     const convertedAmount = useMemo(() => {
         const a = Number(toEnglishDigits(amount).replace(/[^0-9.]/g, ''));
         const r = Number(toEnglishDigits(exchangeRate).replace(/[^0-9.]/g, '')) || 1;
-        return currency === 'IRT' ? a / r : a * r;
-    }, [amount, exchangeRate, currency]);
+        const config = storeSettings.currencyConfigs[currency];
+        return currency === storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / r : a * r);
+    }, [amount, exchangeRate, currency, storeSettings.currencyConfigs]);
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4 modal-animate">
@@ -57,17 +61,17 @@ const InTransitPaymentModal: React.FC<{
                             <button key={c} type="button" onClick={() => setCurrency(c as any)} className={`flex-1 py-2 rounded-lg font-black text-xs transition-all ${currency === c ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{c}</button>
                         ))}
                     </div>
-                    {currency !== 'AFN' && (
+                    {currency !== storeSettings.baseCurrency && (
                         <div>
-                            <label className="block text-xs font-black text-slate-400 mb-2 mr-1">نرخ تبدیل ارز به افغانی</label>
+                            <label className="block text-xs font-black text-slate-400 mb-2 mr-1">نرخ تبدیل ارز به {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}</label>
                             <input type="text" inputMode="decimal" value={exchangeRate} onChange={e => setExchangeRate(toEnglishDigits(e.target.value))} className="w-full p-4 border-2 border-slate-100 rounded-2xl text-center font-mono font-black focus:border-blue-500 outline-none" placeholder="نرخ تبدیل..." required />
                         </div>
                     )}
                     <div>
                         <label className="block text-xs font-black text-slate-400 mb-2 mr-1">مبلغ پرداختی ({currency})</label>
                         <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(toEnglishDigits(e.target.value))} className="w-full p-4 border-2 border-slate-100 rounded-2xl text-center text-2xl font-black text-blue-600 focus:border-blue-500 outline-none" placeholder="0" required />
-                        {currency !== 'AFN' && Number(amount) > 0 && (
-                            <p className="text-[10px] font-black text-emerald-600 mt-2">معادل تقریبی: {Math.round(convertedAmount).toLocaleString()} AFN</p>
+                        {currency !== storeSettings.baseCurrency && Number(amount) > 0 && (
+                            <p className="text-[10px] font-black text-emerald-600 mt-2">معادل تقریبی: {convertedAmount < 1 ? convertedAmount.toFixed(4) : convertedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}</p>
                         )}
                     </div>
                     <div>
@@ -337,17 +341,17 @@ const InTransit: React.FC = () => {
     const [expectedArrivalDate, setExpectedArrivalDate] = useState('');
     const [items, setItems] = useState<InTransitItemDraft[]>([]);
     const [productSearch, setProductSearch] = useState('');
-    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
+    const [currency, setCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency);
     const [exchangeRate, setExchangeRate] = useState<string>('');
 
     const activeFieldRef = useRef<{ name: string; index?: number } | null>(null);
 
     const showToast = (message: string) => { setToast(message); setTimeout(() => setToast(''), 3000); };
 
-    const resetModal = () => { setSupplierId(''); setInvoiceNumber(''); setInvoiceDate(new Date().toISOString().split('T')[0]); setExpectedArrivalDate(''); setItems([]); setProductSearch(''); setCurrency('AFN'); setExchangeRate(''); setEditingInvoiceId(null); };
+    const resetModal = () => { setSupplierId(''); setInvoiceNumber(''); setInvoiceDate(new Date().toISOString().split('T')[0]); setExpectedArrivalDate(''); setItems([]); setProductSearch(''); setCurrency(storeSettings.baseCurrency); setExchangeRate(''); setEditingInvoiceId(null); };
     const handleCloseModal = () => { resetModal(); setIsModalOpen(false); };
 
-    const handleEditClick = (invoice: InTransitInvoice) => { setEditingInvoiceId(invoice.id); setSupplierId(invoice.supplierId); setInvoiceNumber(invoice.invoiceNumber); setInvoiceDate(new Date(invoice.timestamp).toISOString().split('T')[0]); setExpectedArrivalDate(invoice.expectedArrivalDate || ''); setItems(invoice.items.map(i => ({ productId: i.productId, quantity: i.quantity, purchasePrice: i.purchasePrice, lotNumber: i.lotNumber, expiryDate: i.expiryDate || '', showExpiry: !!i.expiryDate }))); setCurrency(invoice.currency || 'AFN'); setExchangeRate(invoice.exchangeRate ? String(invoice.exchangeRate) : ''); setIsModalOpen(true); };
+    const handleEditClick = (invoice: InTransitInvoice) => { setEditingInvoiceId(invoice.id); setSupplierId(invoice.supplierId); setInvoiceNumber(invoice.invoiceNumber); setInvoiceDate(new Date(invoice.timestamp).toISOString().split('T')[0]); setExpectedArrivalDate(invoice.expectedArrivalDate || ''); setItems(invoice.items.map(i => ({ productId: i.productId, quantity: i.quantity, purchasePrice: i.purchasePrice, lotNumber: i.lotNumber, expiryDate: i.expiryDate || '', showExpiry: !!i.expiryDate }))); setCurrency(invoice.currency || storeSettings.baseCurrency); setExchangeRate(invoice.exchangeRate ? String(invoice.exchangeRate) : ''); setIsModalOpen(true); };
 
     const handleMovementConfirm = async (movements: any, cost?: number, desc?: string) => { 
         if (!movementInvoice) return; 
@@ -383,7 +387,7 @@ const InTransit: React.FC = () => {
             const rate = inv.exchangeRate || 1;
             const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
             const amountBase = (inv.currency === storeSettings.baseCurrency) ? inv.totalAmount : 
-                              (config.method === 'multiply' ? inv.totalAmount * rate : inv.totalAmount / rate);
+                              (config.method === 'multiply' ? inv.totalAmount / rate : inv.totalAmount * rate);
             return sum + Math.round(amountBase);
         }, 0);
     }, [filteredInvoices, storeSettings]);
@@ -620,7 +624,21 @@ const InTransit: React.FC = () => {
                                     </p>
                                 )}
                             </div>
-                            <div className="flex gap-4 w-full md:w-auto"><button onClick={handleCloseModal} className="flex-1 md:flex-none px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">لغو</button><button onClick={() => { const finalItems = items.map(d => ({ productId: d.productId, quantity: Number(d.quantity || 0), purchasePrice: Number(d.purchasePrice || 0), lotNumber: d.lotNumber.trim(), expiryDate: d.expiryDate || undefined })); const data = { id: editingInvoiceId || '', supplierId, invoiceNumber, items: finalItems, timestamp: invoiceDate + 'T' + new Date().toISOString().split('T')[1], currency, exchangeRate: currency === storeSettings.baseCurrency ? 1 : Number(exchangeRate), expectedArrivalDate, status: 'active' as const }; const result = editingInvoiceId ? updateInTransitInvoice(data) : addInTransitInvoice(data); if (result.success) handleCloseModal(); }} className="flex-[2] md:flex-none px-14 py-4 rounded-2xl font-black text-lg bg-blue-600 text-white shadow-2xl">ثبت نهایی</button></div>
+                            <div className="flex gap-4 w-full md:w-auto">
+                                <button onClick={handleCloseModal} className="flex-1 md:flex-none px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">لغو</button>
+                                <button onClick={() => { 
+                                    if (!supplierId) { showToast("لطفاً تأمین‌کننده را انتخاب کنید."); return; }
+                                    if (items.length === 0) { showToast("لطفاً حداقل یک کالا اضافه کنید."); return; }
+                                    if (currency !== storeSettings.baseCurrency && (!exchangeRate || Number(exchangeRate) <= 0)) {
+                                        showToast("لطفاً نرخ ارز را وارد کنید.");
+                                        return;
+                                    }
+                                    const finalItems = items.map(d => ({ productId: d.productId, quantity: Number(d.quantity || 0), purchasePrice: Number(d.purchasePrice || 0), lotNumber: d.lotNumber.trim(), expiryDate: d.expiryDate || undefined })); 
+                                    const data = { id: editingInvoiceId || '', supplierId, invoiceNumber, items: finalItems, timestamp: invoiceDate + 'T' + new Date().toISOString().split('T')[1], currency, exchangeRate: currency === storeSettings.baseCurrency ? 1 : Number(exchangeRate), expectedArrivalDate, status: 'active' as const }; 
+                                    const result = editingInvoiceId ? updateInTransitInvoice(data) : addInTransitInvoice(data); 
+                                    if (result.success) handleCloseModal(); 
+                                }} className="flex-[2] md:flex-none px-14 py-4 rounded-2xl font-black text-lg bg-blue-600 text-white shadow-2xl">ثبت نهایی</button>
+                            </div>
                         </div>
                     </div>
                 </div>

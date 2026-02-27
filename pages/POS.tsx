@@ -715,8 +715,8 @@ const POS: React.FC = () => {
             .slice(0, 7);
     }, [products, searchTerm]);
 
-    // Total amount in AFN for the whole cart
-    const totalAmountAFN = cart.reduce((total, item) => {
+    // Total amount in base currency for the whole cart
+    const totalAmountBase = cart.reduce((total, item) => {
         const price = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
         return total + price * item.quantity;
     }, 0);
@@ -885,7 +885,7 @@ const POS: React.FC = () => {
                          selectedCustomerId, setSelectedCustomerId, customers, 
                          selectedSupplierId, setSelectedSupplierId, suppliers,
                          isSupplierMenuOpen, setIsSupplierMenuOpen,
-                         totalAmount: totalAmountAFN, completeSale, setInvoiceDateRange,
+                         totalAmount: totalAmountBase, completeSale, setInvoiceDateRange,
                          handlePrintInvoice, handleEditInvoice, storeSettings, setMobileView, addToCart, handleOpenReturnModal,
                          isProcessing, currency, setCurrency, exchangeRate, setExchangeRate
                        }}
@@ -903,7 +903,7 @@ const POS: React.FC = () => {
                                 <button key={c} onClick={() => setCurrency(c)} className={`px-3 py-1 rounded-lg text-[10px] font-black ${currency === c ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-500 border'}`}>{storeSettings.currencyConfigs[c]?.name || c}</button>
                             ))}
                         </div>
-                        {currency !== 'AFN' && (
+                        {currency !== baseCurrency && (
                             <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] font-bold text-slate-400">نرخ:</span>
                                 <input 
@@ -925,7 +925,7 @@ const POS: React.FC = () => {
                         <div className="flex flex-col justify-center w-2/5">
                             <span className="text-[10px] text-slate-500 font-bold">مبلغ کل ({currency})</span>
                             <span className="text-lg font-extrabold text-blue-700 truncate">
-                                {(currency === 'AFN' ? totalAmountAFN : (currency === 'IRT' ? Math.round(totalAmountAFN * (Number(exchangeRate)||1)) : totalAmountAFN / (Number(exchangeRate)||1))).toLocaleString()}
+                                {(currency === baseCurrency ? totalAmountBase : (currency === 'IRT' ? Math.round(totalAmountBase * (Number(exchangeRate)||1)) : totalAmountBase / (Number(exchangeRate)||1))).toLocaleString()}
                             </span>
                         </div>
                         <div className="flex items-center gap-2 w-3/5 justify-end">

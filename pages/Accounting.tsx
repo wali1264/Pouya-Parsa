@@ -97,13 +97,13 @@ const SuppliersTab = () => {
     const convertedInitialBalance = useMemo(() => { 
         if (!addSupplierAmount || !addSupplierRate || Number(addSupplierRate) <= 0) return 0; 
         const config = storeSettings.currencyConfigs[addSupplierCurrency];
-        return config.method === 'multiply' ? Number(addSupplierAmount) * Number(addSupplierRate) : Number(addSupplierAmount) / Number(addSupplierRate); 
+        return config.method === 'multiply' ? Number(addSupplierAmount) / Number(addSupplierRate) : Number(addSupplierAmount) * Number(addSupplierRate); 
     }, [addSupplierAmount, addSupplierRate, addSupplierCurrency, storeSettings.currencyConfigs]);
 
     const convertedPayment = useMemo(() => { 
         if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0; 
         const config = storeSettings.currencyConfigs[paymentCurrency];
-        return config.method === 'multiply' ? Number(paymentAmount) * Number(exchangeRate) : Number(paymentAmount) / Number(exchangeRate); 
+        return config.method === 'multiply' ? Number(paymentAmount) / Number(exchangeRate) : Number(paymentAmount) * Number(exchangeRate); 
     }, [paymentAmount, exchangeRate, paymentCurrency, storeSettings.currencyConfigs]);
 
     return (
@@ -206,7 +206,7 @@ const SuppliersTab = () => {
                                 </div>
                             )}
                             <div className="flex gap-2"><input name="initialBalance" type="text" inputMode="decimal" value={addSupplierAmount} onChange={e => setAddSupplierAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder="مبلغ" className="w-2/3 p-2.5 border border-slate-200 rounded-xl outline-none" /><select name="balanceType" className="w-1/3 p-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold"><option value="creditor">ما بدهکاریم</option><option value="debtor">او بدهکار است</option></select></div>
-                            {addSupplierCurrency !== baseCurrency && convertedInitialBalance > 0 && <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} {baseCurrencyName}</p>}
+                            {addSupplierCurrency !== baseCurrency && convertedInitialBalance > 0 && <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {convertedInitialBalance < 1 ? convertedInitialBalance.toFixed(4) : convertedInitialBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrencyName}</p>}
                         </div>
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl hover:bg-blue-700 transition-all font-black text-lg">ذخیره نهایی</button>
                     </form>
@@ -230,7 +230,7 @@ const SuppliersTab = () => {
                             </div>
                         )}
                         <input name="amount" type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl font-bold text-center text-xl" required />
-                        {paymentCurrency !== baseCurrency && convertedPayment > 0 && <p className="text-[10px] font-black text-emerald-600 text-left">معادل از حساب کل: {Math.round(convertedPayment).toLocaleString()} {baseCurrencyName}</p>}
+                        {paymentCurrency !== baseCurrency && convertedPayment > 0 && <p className="text-[10px] font-black text-emerald-600 text-left">معادل از حساب کل: {convertedPayment < 1 ? convertedPayment.toFixed(4) : convertedPayment.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrencyName}</p>}
                         <input name="description" placeholder="توضیحات (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl font-black text-lg active:scale-[0.98]">ثبت و چاپ رسید</button>
                     </form>
@@ -268,11 +268,18 @@ const PayrollTab = () => {
     
     const [advanceCurrency, setAdvanceCurrency] = useState<'AFN' | 'USD' | 'IRT'>(storeSettings.baseCurrency);
     const [advanceRate, setAdvanceRate] = useState('');
+    const [advanceAmount, setAdvanceAmount] = useState('');
+
+    const convertedAdvance = useMemo(() => {
+        if (!advanceAmount || !advanceRate || Number(advanceRate) <= 0) return 0;
+        const config = storeSettings.currencyConfigs[advanceCurrency];
+        return config.method === 'multiply' ? Number(advanceAmount) / Number(advanceRate) : Number(advanceAmount) * Number(advanceRate);
+    }, [advanceAmount, advanceRate, advanceCurrency, storeSettings.currencyConfigs]);
 
     const handleAddAdvanceForm = (ev: React.FormEvent<HTMLFormElement>, employeeId: string) => {
         ev.preventDefault();
         const formData = new FormData(ev.currentTarget);
-        const amount = Number(toEnglishDigits(formData.get('amount') as string).replace(/[^0-9.]/g, ''));
+        const amount = Number(toEnglishDigits(advanceAmount).replace(/[^0-9.]/g, ''));
         const description = formData.get('description') as string || 'مساعده';
         
         if (!amount || amount <= 0) return;
@@ -285,6 +292,7 @@ const PayrollTab = () => {
         addEmployeeAdvance(employeeId, amount, description, advanceCurrency, advanceCurrency === storeSettings.baseCurrency ? 1 : Number(advanceRate));
         (ev.target as HTMLFormElement).reset();
         setAdvanceRate('');
+        setAdvanceAmount('');
         showToast("تراکنش با موفقیت ثبت شد.");
     };
 
@@ -342,10 +350,13 @@ const PayrollTab = () => {
                                             <select value={advanceCurrency} onChange={(e) => setAdvanceCurrency(e.target.value as any)} className="p-2 border border-slate-200 rounded-xl text-xs font-bold bg-white">
                                                 {['AFN', 'USD', 'IRT'].map(c => <option key={c} value={c}>{c}</option>)}
                                             </select>
-                                            <input type="text" inputMode="decimal" name="amount" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} className="flex-grow p-2 border border-slate-200 rounded-xl text-center font-bold focus:ring-2 focus:ring-amber-500 outline-none" placeholder="مبلغ" required />
+                                            <input type="text" inputMode="decimal" name="amount" value={advanceAmount} onChange={(e) => setAdvanceAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} className="flex-grow p-2 border border-slate-200 rounded-xl text-center font-bold focus:ring-2 focus:ring-amber-500 outline-none" placeholder="مبلغ" required />
                                         </div>
                                         {advanceCurrency !== storeSettings.baseCurrency && (
                                             <input type="text" inputMode="decimal" value={advanceRate} onChange={e => setAdvanceRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} className="w-full p-2 border border-slate-200 rounded-xl text-center text-xs font-mono" placeholder={`نرخ تبدیل (${storeSettings.currencyConfigs[storeSettings.baseCurrency].name} به ${advanceCurrency})`} required />
+                                        )}
+                                        {advanceCurrency !== storeSettings.baseCurrency && convertedAdvance > 0 && (
+                                            <p className="text-[10px] font-black text-amber-600 text-left">معادل: {convertedAdvance < 1 ? convertedAdvance.toFixed(4) : convertedAdvance.toLocaleString(undefined, { maximumFractionDigits: 2 })} {storeSettings.currencyConfigs[storeSettings.baseCurrency].name}</p>
                                         )}
                                         <div className="flex gap-2">
                                             <input type="text" name="description" className="flex-grow p-2 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none" placeholder="توضیحات (اختیاری)" />
@@ -558,16 +569,16 @@ const CustomersTab = () => {
         if (!addCustomerAmount || !addCustomerRate || Number(addCustomerRate) <= 0) return 0;
         const config = storeSettings.currencyConfigs[addCustomerCurrency];
         return config.method === 'multiply' 
-            ? Number(addCustomerAmount) * Number(addCustomerRate)
-            : Number(addCustomerAmount) / Number(addCustomerRate);
+            ? Number(addCustomerAmount) / Number(addCustomerRate)
+            : Number(addCustomerAmount) * Number(addCustomerRate);
     }, [addCustomerAmount, addCustomerRate, addCustomerCurrency, storeSettings.currencyConfigs]);
 
     const convertedPayment = useMemo(() => {
         if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0;
         const config = storeSettings.currencyConfigs[paymentCurrency];
         return config.method === 'multiply'
-            ? Number(paymentAmount) * Number(exchangeRate)
-            : Number(paymentAmount) / Number(exchangeRate);
+            ? Number(paymentAmount) / Number(exchangeRate)
+            : Number(paymentAmount) * Number(exchangeRate);
     }, [paymentAmount, exchangeRate, paymentCurrency, storeSettings.currencyConfigs]);
 
     const selectedTrustee = useMemo(() => depositHolders.find(h => h.id === selectedTrusteeId), [depositHolders, selectedTrusteeId]);
@@ -692,7 +703,7 @@ const CustomersTab = () => {
                                 </select>
                             </div>
                             {addCustomerCurrency !== baseCurrency && convertedInitialBalance > 0 && (
-                                <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {Math.round(convertedInitialBalance).toLocaleString()} {baseCurrencyName}</p>
+                                <p className="text-[10px] font-black text-blue-600 text-left">معادل تقریبی: {convertedInitialBalance < 1 ? convertedInitialBalance.toFixed(4) : convertedInitialBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrencyName}</p>
                             )}
                         </div>
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl shadow-xl shadow-blue-100 font-black text-lg">ذخیره مشتری</button>
@@ -776,7 +787,7 @@ const CustomersTab = () => {
                         )}
                         <input name="amount" type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ دریافتی (${paymentCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-emerald-50 font-black text-xl text-center" required />
                         {paymentCurrency !== baseCurrency && convertedPayment > 0 && (
-                            <p className="text-[10px] font-black text-emerald-600 text-left">معادل دریافتی: {Math.round(convertedPayment).toLocaleString()} {baseCurrencyName}</p>
+                            <p className="text-[10px] font-black text-emerald-600 text-left">معادل دریافتی: {convertedPayment < 1 ? convertedPayment.toFixed(4) : convertedPayment.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrencyName}</p>
                         )}
                         <input name="description" placeholder="بابت... (اختیاری)" className="w-full p-4 border border-slate-200 rounded-xl" />
                         <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl shadow-xl shadow-emerald-100 font-black text-lg active:scale-[0.98]">ثبت نهایی و چاپ رسید</button>
@@ -812,10 +823,18 @@ const ExpensesTab = () => {
         return expenses.filter(e => e.category === filterCategory);
     }, [expenses, filterCategory]);
 
+    const [expenseAmount, setExpenseAmount] = useState('');
+
+    const convertedExpense = useMemo(() => {
+        if (!expenseAmount || !expenseRate || Number(expenseRate) <= 0) return 0;
+        const config = storeSettings.currencyConfigs[expenseCurrency];
+        return config.method === 'multiply' ? Number(expenseAmount) / Number(expenseRate) : Number(expenseAmount) * Number(expenseRate);
+    }, [expenseAmount, expenseRate, expenseCurrency, storeSettings.currencyConfigs]);
+
     const handleAddExpenseForm = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        const amount = Number(toEnglishDigits(formData.get('amount') as string).replace(/[^0-9.]/g, ''));
+        const amount = Number(toEnglishDigits(expenseAmount).replace(/[^0-9.]/g, ''));
         
         if (expenseCurrency !== baseCurrency && (!expenseRate || Number(expenseRate) <= 0)) {
             alert("لطفا نرخ ارز را وارد کنید.");
@@ -1012,7 +1031,10 @@ const ExpensesTab = () => {
                             </div>
                         )}
 
-                        <input name="amount" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} placeholder={`مبلغ هزینه (${expenseCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold text-center text-xl" defaultValue={editingExpense?.amount} required />
+                        <input name="amount" type="text" inputMode="decimal" value={expenseAmount} onChange={(e:any) => setExpenseAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} placeholder={`مبلغ هزینه (${expenseCurrency})`} className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 font-bold text-center text-xl" required />
+                        {expenseCurrency !== baseCurrency && convertedExpense > 0 && (
+                            <p className="text-[10px] font-black text-red-600 text-left">معادل هزینه: {convertedExpense < 1 ? convertedExpense.toFixed(4) : convertedExpense.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrencyName}</p>
+                        )}
                         
                         <select name="category" className="w-full p-4 border border-slate-200 rounded-xl bg-white font-bold outline-none focus:ring-4 focus:ring-blue-50" defaultValue={editingExpense?.category}>
                             {categories.map(cat => (
