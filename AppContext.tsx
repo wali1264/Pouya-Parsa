@@ -95,7 +95,7 @@ interface AppContextType extends AppState {
     // Security Deposits
     addDepositHolder: (holder: Omit<DepositHolder, 'id' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => Promise<void>;
     deleteDepositHolder: (id: string) => Promise<void>;
-    processDepositTransaction: (holderId: string, type: 'deposit' | 'withdrawal', amount: number, currency: 'AFN' | 'USD' | 'IRT', description: string) => Promise<{ success: boolean; message: string }>;
+    processDepositTransaction: (holderId: string, type: 'deposit' | 'withdrawal', amount: number, currency: 'AFN' | 'USD' | 'IRT', description: string, exchangeRate?: number) => Promise<{ success: boolean; message: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1178,7 +1178,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const s = state.suppliers.find(x => x.id === sid);
         const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
         const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
-        const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: sid, type: 'payment', amount: a, date: new Date().toISOString(), description: d, currency: cur };
+        const tx: SupplierTransaction = { 
+            id: crypto.randomUUID(), 
+            supplierId: sid, 
+            type: 'payment', 
+            amount: a, 
+            date: new Date().toISOString(), 
+            description: d, 
+            currency: cur,
+            exchangeRate: rate
+        };
         const newB = { AFN: s!.balanceAFN - (cur==='AFN'?a:0), USD: s!.balanceUSD - (cur==='USD'?a:0), IRT: s!.balanceIRT - (cur==='IRT'?a:0), Total: s!.balance - baseAmount };
         await api.processPayment('supplier', sid, newB, tx);
         await fetchData(true);
@@ -1214,7 +1223,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             amount: a, 
             date: new Date().toISOString(), 
             description: d + (trusteeId ? ' (تحویل به واسطه)' : ''), 
-            currency: cur 
+            currency: cur,
+            exchangeRate: rate
         };
         
         const newB = { 
@@ -1344,9 +1354,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     const addDepositHolder = async (h: any) => { await api.addDepositHolder(h); await fetchData(true); };
     const deleteDepositHolder = async (id: string) => { await api.deleteDepositHolder(id); await fetchData(true); };
-    const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string) => {
+    const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string, rate: number = 1) => {
         const holder = state.depositHolders.find(x => x.id === hid);
-        const tx: DepositTransaction = { id: crypto.randomUUID(), holderId: hid, type: t, amount: a, currency: c, description: d, date: new Date().toISOString() };
+        const tx: DepositTransaction = { 
+            id: crypto.randomUUID(), 
+            holderId: hid, 
+            type: t, 
+            amount: a, 
+            currency: c, 
+            description: d, 
+            date: new Date().toISOString(),
+            exchangeRate: rate
+        };
         const newH = { ...holder! };
         const factor = t === 'deposit' ? 1 : -1;
         if (c === 'USD') newH.balanceUSD += factor * a; 

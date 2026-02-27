@@ -119,6 +119,7 @@ export interface DepositTransaction {
     currency: 'AFN' | 'USD' | 'IRT';
     description: string;
     date: string;
+    exchangeRate?: number; // Rate to base currency at time of transaction
 }
 
 // --- Accounting Module Types ---
@@ -144,6 +145,7 @@ export interface SupplierTransaction {
     description: string; // e.g., Invoice # or Payment to X
     invoiceId?: string; // Link to the purchase invoice
     currency?: 'AFN' | 'USD' | 'IRT'; // Track specific currency
+    exchangeRate?: number; // Rate to base currency at time of transaction
 }
 
 
@@ -191,6 +193,7 @@ export interface CustomerTransaction {
     description: string; // e.g., Invoice # or Payment received
     invoiceId?: string; // Link to the sale invoice
     currency?: 'AFN' | 'USD' | 'IRT'; // Added currency tracking
+    exchangeRate?: number; // Rate to base currency at time of transaction
 }
 
 export type AnyTransaction = CustomerTransaction | SupplierTransaction | PayrollTransaction | DepositTransaction;

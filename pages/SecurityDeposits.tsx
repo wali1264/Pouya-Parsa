@@ -27,6 +27,7 @@ const SecurityDeposits: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedHolder, setSelectedHolder] = useState<DepositHolder | null>(null);
     const [transactionType, setTransactionType] = useState<'deposit' | 'withdrawal'>('deposit');
+    const [selectedCurrency, setSelectedCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
     const [historyModalHolder, setHistoryModalHolder] = useState<DepositHolder | null>(null);
     const [toast, setToast] = useState('');
 
@@ -58,6 +59,7 @@ const SecurityDeposits: React.FC = () => {
         const formData = new FormData(e.currentTarget);
         const amount = Number(toEnglishDigits(formData.get('amount') as string).replace(/[^0-9.]/g, ''));
         const currency = formData.get('currency') as 'AFN' | 'USD' | 'IRT';
+        const rate = Number(toEnglishDigits(formData.get('exchangeRate') as string || '1').replace(/[^0-9.]/g, '')) || 1;
         const description = formData.get('description') as string;
 
         if (!amount || amount <= 0) return showToast("⚠️ مبلغ معتبر وارد کنید.");
@@ -65,7 +67,7 @@ const SecurityDeposits: React.FC = () => {
 
         setIsProcessing(true);
         try {
-            const res = await processDepositTransaction(selectedHolder.id, transactionType, amount, currency, description);
+            const res = await processDepositTransaction(selectedHolder.id, transactionType, amount, currency, description, rate);
             if (res.success) {
                 setIsTransactionModalOpen(false);
                 showToast(`✅ ${transactionType === 'deposit' ? 'واریز' : 'برداشت'} مبلغ ${amount.toLocaleString()} ${currency} با موفقیت ثبت شد.`);
@@ -273,12 +275,36 @@ const SecurityDeposits: React.FC = () => {
                             <div className="flex gap-2">
                                 {['AFN', 'USD', 'IRT'].map(c => (
                                     <label key={c} className="cursor-pointer group">
-                                        <input type="radio" name="currency" value={c} defaultChecked={c==='AFN'} className="hidden peer" disabled={isProcessing} />
+                                        <input 
+                                            type="radio" 
+                                            name="currency" 
+                                            value={c} 
+                                            checked={selectedCurrency === c} 
+                                            onChange={() => setSelectedCurrency(c as any)}
+                                            className="hidden peer" 
+                                            disabled={isProcessing} 
+                                        />
                                         <div className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-black text-indigo-400 peer-checked:bg-indigo-600 peer-checked:text-white peer-checked:border-indigo-600 transition-all">{c}</div>
                                     </label>
                                 ))}
                             </div>
                         </div>
+                        {selectedCurrency !== storeSettings.baseCurrency && (
+                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                <label className="block text-xs font-black text-blue-800 mb-2">نرخ تبدیل به {storeSettings.baseCurrency}</label>
+                                <input 
+                                    name="exchangeRate" 
+                                    type="text" 
+                                    inputMode="decimal" 
+                                    onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} 
+                                    className="w-full p-3 border-2 border-white rounded-xl focus:border-blue-500 outline-none font-black text-lg text-center text-blue-800" 
+                                    placeholder="1.0" 
+                                    defaultValue="1"
+                                    required 
+                                    disabled={isProcessing} 
+                                />
+                            </div>
+                        )}
                         <div>
                             <label className="block text-sm font-bold text-indigo-900 mb-2">مبلغ تراکنش</label>
                             <input name="amount" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-2xl text-center text-indigo-800" placeholder="0" required disabled={isProcessing} />

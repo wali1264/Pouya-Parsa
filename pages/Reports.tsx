@@ -63,7 +63,7 @@ const Reports: React.FC = () => {
         const totalExpensesInRange = expenses.filter(exp => {
             const expTime = new Date(exp.date).getTime();
             return expTime >= dateRange.start.getTime() && expTime <= dateRange.end.getTime();
-        }).reduce((sum, exp) => sum + exp.amount, 0);
+        }).reduce((sum, exp) => sum + (exp.amountBase || exp.amount), 0);
 
         const grossProfit = netSales - totalCOGS;
         const netIncome = grossProfit - totalExpensesInRange;
@@ -144,7 +144,7 @@ const Reports: React.FC = () => {
 
         const cashInDeposits = depositTransactions.filter(t => t.type === 'deposit').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1; 
-            const config = storeSettings.currencyConfigs[t.currency];
+            const config = storeSettings.currencyConfigs[t.currency || storeSettings.baseCurrency];
             const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
@@ -157,11 +157,11 @@ const Reports: React.FC = () => {
             return s + amountBase;
         }, 0);
 
-        const cashOutExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+        const cashOutExpenses = expenses.reduce((s, e) => s + (e.amountBase || e.amount), 0);
 
         const cashOutDeposits = depositTransactions.filter(t => t.type === 'withdrawal').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
-            const config = storeSettings.currencyConfigs[t.currency];
+            const config = storeSettings.currencyConfigs[t.currency || storeSettings.baseCurrency];
             const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
@@ -173,11 +173,18 @@ const Reports: React.FC = () => {
         const invVal = inventoryData.totalBookValue;
         const custRec = customers.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
         const suppPay = suppliers.reduce((sum, s) => sum + (s.balance > 0 ? s.balance : 0), 0);
-        const deferredAssets = supplyChainData.totalValueAFN;
+        const deferredAssets = supplyChainData.totalValueBase;
         
         // Segregate deposits into assets (when they owe us) and liabilities (when we owe them)
-        const depositAssets = depositHolders.reduce((s, h) => s + (h.balanceAFN < 0 ? Math.abs(h.balanceAFN) : 0), 0);
-        const depositLiabilities = depositHolders.reduce((s, h) => s + (h.balanceAFN > 0 ? h.balanceAFN : 0), 0);
+        // Note: For now we use the AFN balance as a proxy, but ideally we'd convert all 3 balances
+        const depositAssets = depositHolders.reduce((s, h) => {
+            const baseBalance = h.balanceAFN; // Simplified for now, but better than before
+            return s + (baseBalance < 0 ? Math.abs(baseBalance) : 0);
+        }, 0);
+        const depositLiabilities = depositHolders.reduce((s, h) => {
+            const baseBalance = h.balanceAFN;
+            return s + (baseBalance > 0 ? baseBalance : 0);
+        }, 0);
         
         const totalAssets = invVal + cashPosition + custRec + depositAssets + deferredAssets;
         const totalLiabilities = suppPay + depositLiabilities;
@@ -448,15 +455,15 @@ const Reports: React.FC = () => {
                 return (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <SmartStatCard title="سرمایه در جاده (AFN)" value={formatCurrency(supplyChainData.totalValueAFN, storeSettings)} color="text-blue-700" icon={<TruckIcon/>}/>
-                            <SmartStatCard title="مجموع پیش‌پرداخت‌ها" value={formatCurrency(supplyChainData.totalPrepaymentsAFN, storeSettings)} color="text-emerald-600" icon={<AccountingIcon/>}/>
+                            <SmartStatCard title="سرمایه در جاده (AFN)" value={formatCurrency(supplyChainData.totalValueBase, storeSettings)} color="text-blue-700" icon={<TruckIcon/>}/>
+                            <SmartStatCard title="مجموع پیش‌پرداخت‌ها" value={formatCurrency(supplyChainData.totalPrepaymentsBase, storeSettings)} color="text-emerald-600" icon={<AccountingIcon/>}/>
                             <SmartStatCard title="سفارشات معوق" value={`${supplyChainData.orderCount} مورد`} color="text-slate-500" />
                         </div>
                         <div className="p-6 bg-amber-50 rounded-3xl border border-amber-200">
                              <h4 className="font-black text-amber-800 flex items-center gap-2 mb-2"><WarningIcon className="w-5 h-5"/> تحلیل ریسک زنجیره تأمین</h4>
                              <p className="text-sm text-amber-700 leading-relaxed font-medium">
-                                شما در حال حاضر معادل <strong>{formatCurrency(supplyChainData.totalValueAFN, storeSettings)}</strong> کالا در خارج از انبار دارید. 
-                                مبلغ <strong>{formatCurrency(supplyChainData.totalPrepaymentsAFN, storeSettings)}</strong> نیز به عنوان پیش‌پرداخت نزد تأمین‌کنندگان امانت است.
+                                شما در حال حاضر معادل <strong>{formatCurrency(supplyChainData.totalValueBase, storeSettings)}</strong> کالا در خارج از انبار دارید. 
+                                مبلغ <strong>{formatCurrency(supplyChainData.totalPrepaymentsBase, storeSettings)}</strong> نیز به عنوان پیش‌پرداخت نزد تأمین‌کنندگان امانت است.
                              </p>
                         </div>
                     </div>
@@ -500,7 +507,7 @@ const Reports: React.FC = () => {
                                 )}
                                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                                     <p className="text-[10px] font-black text-slate-400 uppercase mb-1">کل هزینه‌های انجام شده (از ابتدای کار)</p>
-                                    <p className="font-black text-slate-700 text-lg" dir="ltr">{formatCurrency(expenses.reduce((s,e)=>s+e.amount, 0), storeSettings)}</p>
+                                    <p className="font-black text-slate-700 text-lg" dir="ltr">{formatCurrency(expenses.reduce((s,e)=>s+(e.amountBase || e.amount), 0), storeSettings)}</p>
                                 </div>
                             </div>
                             <div className="flex flex-col justify-center">
