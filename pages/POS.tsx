@@ -67,7 +67,7 @@ const ProductSide: React.FC<{
     const rateNum = Number(exchangeRate) || 1;
     const config = storeSettings.currencyConfigs[currency];
     const convertedTotal = currency === baseCurrency ? cartTotalBase : 
-                          (config?.method === 'multiply' ? cartTotalBase / rateNum : cartTotalBase * rateNum);
+                          (config?.method === 'multiply' ? cartTotalBase * rateNum : cartTotalBase / rateNum);
 
     return (
     <>
@@ -210,7 +210,7 @@ const CartSide: React.FC<any> = ({
     const config = storeSettings.currencyConfigs[currency];
     
     const convertedTotal = currency === baseCurrency ? totalAmount : 
-                          (config.method === 'multiply' ? totalAmount / rateNum : totalAmount * rateNum);
+                          (config.method === 'multiply' ? totalAmount * rateNum : totalAmount / rateNum);
 
     const selectedCustomer = customers.find((c: Customer) => c.id === selectedCustomerId);
     const isOverLimit = selectedCustomer && selectedCustomer.creditLimit > 0 && (selectedCustomer.balance + totalAmount) > selectedCustomer.creditLimit;

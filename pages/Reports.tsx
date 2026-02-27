@@ -36,12 +36,12 @@ const Reports: React.FC = () => {
         filteredInvoices.forEach(inv => {
             const rate = inv.exchangeRate || 1;
             const config = storeSettings.currencyConfigs[inv.currency];
-            const amountBase = inv.totalAmountAFN ?? (config?.method === 'multiply' ? (inv.totalAmount * rate) : (inv.totalAmount / rate));
+            const amountBase = inv.totalAmountAFN ?? (config?.method === 'multiply' ? (inv.totalAmount / rate) : (inv.totalAmount * rate));
             
             if (inv.type === 'sale') {
                 grossRevenueBase += amountBase;
                 if (inv.totalDiscount > 0) {
-                    const discountBase = config?.method === 'multiply' ? (inv.totalDiscount * rate) : (inv.totalDiscount / rate);
+                    const discountBase = config?.method === 'multiply' ? (inv.totalDiscount / rate) : (inv.totalDiscount * rate);
                     totalDiscountsGivenBase += discountBase;
                 }
                 inv.items.forEach(item => { 
@@ -102,11 +102,11 @@ const Reports: React.FC = () => {
             const rate = inv.exchangeRate || 1;
             const config = storeSettings.currencyConfigs[inv.currency || baseCurrency];
             const itemsValBase = inv.items.reduce((s, it) => {
-                const priceBase = config?.method === 'multiply' ? it.purchasePrice * rate : it.purchasePrice / rate;
+                const priceBase = config?.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate;
                 return s + ((it.atFactoryQty + it.inTransitQty) * priceBase);
             }, 0);
             totalValueBase += itemsValBase;
-            const prepaymentBase = config?.method === 'multiply' ? (inv.paidAmount || 0) * rate : (inv.paidAmount || 0) / rate;
+            const prepaymentBase = config?.method === 'multiply' ? (inv.paidAmount || 0) / rate : (inv.paidAmount || 0) * rate;
             totalPrepaymentsBase += prepaymentBase;
         });
 
@@ -138,14 +138,14 @@ const Reports: React.FC = () => {
             const rate = (t as any).exchangeRate || 1;
             const currency = (t as any).currency || baseCurrency;
             const config = storeSettings.currencyConfigs[currency];
-            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
 
         const cashInDeposits = depositTransactions.filter(t => t.type === 'deposit').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1; 
             const config = storeSettings.currencyConfigs[t.currency];
-            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
 
@@ -153,7 +153,7 @@ const Reports: React.FC = () => {
             const rate = (t as any).exchangeRate || 1;
             const currency = (t as any).currency || baseCurrency;
             const config = storeSettings.currencyConfigs[currency];
-            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
 
@@ -162,7 +162,7 @@ const Reports: React.FC = () => {
         const cashOutDeposits = depositTransactions.filter(t => t.type === 'withdrawal').reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
             const config = storeSettings.currencyConfigs[t.currency];
-            const amountBase = config?.method === 'multiply' ? t.amount * rate : t.amount / rate;
+            const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
 
@@ -205,7 +205,7 @@ const Reports: React.FC = () => {
             totalAFN: filtered.reduce((s, t) => {
                 const rate = (t as any).exchangeRate || 1;
                 const config = storeSettings.currencyConfigs[(t as any).currency || storeSettings.baseCurrency];
-                const amountBase = (t as any).currency === storeSettings.baseCurrency ? t.amount : (config?.method === 'multiply' ? t.amount * rate : t.amount / rate);
+                const amountBase = (t as any).currency === storeSettings.baseCurrency ? t.amount : (config?.method === 'multiply' ? t.amount / rate : t.amount * rate);
                 return s + amountBase;
             }, 0), 
             count: filtered.length,
@@ -229,7 +229,7 @@ const Reports: React.FC = () => {
                 const rate = inv.exchangeRate || 1;
                 const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
                 inv.items.forEach(item => {
-                    const priceAFN = inv.currency === storeSettings.baseCurrency ? item.purchasePrice : (config?.method === 'multiply' ? item.purchasePrice * rate : item.purchasePrice / rate);
+                    const priceAFN = inv.currency === storeSettings.baseCurrency ? item.purchasePrice : (config?.method === 'multiply' ? item.purchasePrice / rate : item.purchasePrice * rate);
                     const valueAFN = priceAFN * item.quantity;
                     const existing = results.get(item.productId);
                     if (existing) {
@@ -298,17 +298,22 @@ const Reports: React.FC = () => {
                     const supplier = suppliers.find(s => s.id === inv.supplierId);
                     return inv.items
                         .filter(it => it.productId === selectedProductId)
-                        .map(it => ({
-                            id: inv.id + it.lotNumber,
-                            date: inv.timestamp,
-                            entityName: supplier?.name || 'ناشناس',
-                            price: it.purchasePrice,
-                            currency: inv.currency || 'AFN',
-                            rate: inv.exchangeRate || 1,
-                            quantity: it.quantity,
-                            lot: it.lotNumber,
-                            totalAFN: (inv.currency === 'IRT' ? it.purchasePrice / (inv.exchangeRate || 1) : it.purchasePrice * (inv.exchangeRate || 1)) * it.quantity
-                        }));
+                        .map(it => {
+                            const rate = inv.exchangeRate || 1;
+                            const config = storeSettings.currencyConfigs[inv.currency || 'AFN'];
+                            const priceAFN = inv.currency === 'AFN' ? it.purchasePrice : (config?.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate);
+                            return {
+                                id: inv.id + it.lotNumber,
+                                date: inv.timestamp,
+                                entityName: supplier?.name || 'ناشناس',
+                                price: it.purchasePrice,
+                                currency: inv.currency || 'AFN',
+                                rate: rate,
+                                quantity: it.quantity,
+                                lot: it.lotNumber,
+                                totalAFN: priceAFN * it.quantity
+                            };
+                        });
                 }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         } else {
             return saleInvoices
@@ -637,7 +642,13 @@ const Reports: React.FC = () => {
                                                 <tr key={tx.id} className="border-b hover:bg-slate-50 transition-colors">
                                                     <td className="p-4 text-[10px] font-bold text-slate-400">{new Date(tx.date).toLocaleDateString('fa-IR')}</td>
                                                     <td className="p-4 font-bold text-slate-800">{tx.entityName}</td>
-                                                    <td className="p-4 font-mono font-black" dir="ltr">{(tx.priceAFN ?? (tx.currency === 'IRT' ? tx.price / tx.rate : tx.price * tx.rate)).toLocaleString()}</td>
+                                                    <td className="p-4 font-mono font-black" dir="ltr">{(() => {
+                                                        if (tx.priceAFN !== undefined) return tx.priceAFN.toLocaleString();
+                                                        const rate = tx.rate || 1;
+                                                        const config = storeSettings.currencyConfigs[tx.currency || 'AFN'];
+                                                        const priceAFN = tx.currency === 'AFN' ? tx.price : (config?.method === 'multiply' ? tx.price / rate : tx.price * rate);
+                                                        return priceAFN.toLocaleString();
+                                                    })()}</td>
                                                     <td className="p-4 font-bold text-slate-600">{formatStockToPackagesAndUnits(tx.quantity, storeSettings, (products.find(p=>p.id===selectedProductId)?.itemsPerPackage || 1))}</td>
                                                     {statsType === 'sales' && <td className="p-4 font-black text-emerald-600" dir="ltr">{Math.round(tx.profitAFN).toLocaleString()}</td>}
                                                     <td className="p-4 font-black text-blue-600" dir="ltr">{Math.round(tx.totalAFN ?? tx.totalSaleAFN).toLocaleString()}</td>

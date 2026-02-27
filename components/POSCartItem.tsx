@@ -20,7 +20,7 @@ const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, excha
     
     // Initial value in transactional currency
     const initialDisplay = currency === storeSettings.baseCurrency ? currentPriceAFN : 
-                          (config?.method === 'multiply' ? currentPriceAFN / rate : currentPriceAFN * rate);
+                          (config?.method === 'multiply' ? currentPriceAFN * rate : currentPriceAFN / rate);
 
     const [priceStr, setPriceStr] = useState(String(Math.round(initialDisplay * 1000) / 1000));
     
@@ -28,7 +28,7 @@ const CartItemPriceEditor: React.FC<PriceEditorProps> = ({ item, currency, excha
         const entered = Number(priceStr);
         // Convert back to AFN for storage
         const afnPrice = currency === storeSettings.baseCurrency ? entered :
-                         (config?.method === 'multiply' ? entered * rate : entered / rate);
+                         (config?.method === 'multiply' ? entered / rate : entered * rate);
         onSave(afnPrice);
     };
     
@@ -85,10 +85,10 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
 
     // Convert prices for display
     const displayPrice = currency === storeSettings.baseCurrency ? priceAFN : 
-                        (config?.method === 'multiply' ? priceAFN / rate : priceAFN * rate);
+                        (config?.method === 'multiply' ? priceAFN * rate : priceAFN / rate);
     
     const displayOriginalPrice = currency === storeSettings.baseCurrency ? originalPriceAFN : 
-                                (config?.method === 'multiply' ? originalPriceAFN / rate : originalPriceAFN * rate);
+                                (config?.method === 'multiply' ? originalPriceAFN * rate : originalPriceAFN / rate);
 
     const currencySuffix = config?.name || currency;
 

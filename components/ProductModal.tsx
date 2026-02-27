@@ -265,11 +265,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
             
             const finalPurchasePriceBase = purchaseCurrency === baseCurrency 
                 ? Number(formData.purchasePrice)
-                : (config.method === 'multiply' ? Number(formData.purchasePrice) * exchangeRateValue : Number(formData.purchasePrice) / exchangeRateValue);
+                : (config.method === 'multiply' ? Number(formData.purchasePrice) / exchangeRateValue : Number(formData.purchasePrice) * exchangeRateValue);
 
             const finalSalePriceBase = purchaseCurrency === baseCurrency
                 ? Number(formData.salePrice)
-                : (config.method === 'multiply' ? Number(formData.salePrice) * exchangeRateValue : Number(formData.salePrice) / exchangeRateValue);
+                : (config.method === 'multiply' ? Number(formData.salePrice) / exchangeRateValue : Number(formData.salePrice) * exchangeRateValue);
 
             const productData: ProductFormData = {
                 name: formData.name.trim(),
@@ -407,7 +407,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                                         const config = storeSettings.currencyConfigs[purchaseCurrency];
                                         const val = Number(formData.purchasePrice);
                                         const rate = Number(purchaseExchangeRate);
-                                        const converted = config.method === 'multiply' ? val * rate : val / rate;
+                                        const converted = config.method === 'multiply' ? val / rate : val * rate;
                                         return converted.toLocaleString();
                                     })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                 </p>
@@ -433,7 +433,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                                         const config = storeSettings.currencyConfigs[purchaseCurrency];
                                         const val = Number(formData.salePrice);
                                         const rate = Number(purchaseExchangeRate);
-                                        const converted = config.method === 'multiply' ? val * rate : val / rate;
+                                        const converted = config.method === 'multiply' ? val / rate : val * rate;
                                         return converted.toLocaleString();
                                     })()} {storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency}
                                 </p>

@@ -97,13 +97,13 @@ const SuppliersTab = () => {
     const convertedInitialBalance = useMemo(() => { 
         if (!addSupplierAmount || !addSupplierRate || Number(addSupplierRate) <= 0) return 0; 
         const config = storeSettings.currencyConfigs[addSupplierCurrency];
-        return config.method === 'multiply' ? Number(addSupplierAmount) * Number(addSupplierRate) : Number(addSupplierAmount) / Number(addSupplierRate); 
+        return config.method === 'multiply' ? Number(addSupplierAmount) / Number(addSupplierRate) : Number(addSupplierAmount) * Number(addSupplierRate); 
     }, [addSupplierAmount, addSupplierRate, addSupplierCurrency, storeSettings.currencyConfigs]);
 
     const convertedPayment = useMemo(() => { 
         if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0; 
         const config = storeSettings.currencyConfigs[paymentCurrency];
-        return config.method === 'multiply' ? Number(paymentAmount) * Number(exchangeRate) : Number(paymentAmount) / Number(exchangeRate); 
+        return config.method === 'multiply' ? Number(paymentAmount) / Number(exchangeRate) : Number(paymentAmount) * Number(exchangeRate); 
     }, [paymentAmount, exchangeRate, paymentCurrency, storeSettings.currencyConfigs]);
 
     return (
@@ -273,7 +273,7 @@ const PayrollTab = () => {
     const convertedAdvance = useMemo(() => {
         if (!advanceAmount || !advanceRate || Number(advanceRate) <= 0) return 0;
         const config = storeSettings.currencyConfigs[advanceCurrency];
-        return config.method === 'multiply' ? Number(advanceAmount) * Number(advanceRate) : Number(advanceAmount) / Number(advanceRate);
+        return config.method === 'multiply' ? Number(advanceAmount) / Number(advanceRate) : Number(advanceAmount) * Number(advanceRate);
     }, [advanceAmount, advanceRate, advanceCurrency, storeSettings.currencyConfigs]);
 
     const handleAddAdvanceForm = (ev: React.FormEvent<HTMLFormElement>, employeeId: string) => {
@@ -569,16 +569,16 @@ const CustomersTab = () => {
         if (!addCustomerAmount || !addCustomerRate || Number(addCustomerRate) <= 0) return 0;
         const config = storeSettings.currencyConfigs[addCustomerCurrency];
         return config.method === 'multiply' 
-            ? Number(addCustomerAmount) * Number(addCustomerRate)
-            : Number(addCustomerAmount) / Number(addCustomerRate);
+            ? Number(addCustomerAmount) / Number(addCustomerRate)
+            : Number(addCustomerAmount) * Number(addCustomerRate);
     }, [addCustomerAmount, addCustomerRate, addCustomerCurrency, storeSettings.currencyConfigs]);
 
     const convertedPayment = useMemo(() => {
         if (!paymentAmount || !exchangeRate || Number(exchangeRate) <= 0) return 0;
         const config = storeSettings.currencyConfigs[paymentCurrency];
         return config.method === 'multiply'
-            ? Number(paymentAmount) * Number(exchangeRate)
-            : Number(paymentAmount) / Number(exchangeRate);
+            ? Number(paymentAmount) / Number(exchangeRate)
+            : Number(paymentAmount) * Number(exchangeRate);
     }, [paymentAmount, exchangeRate, paymentCurrency, storeSettings.currencyConfigs]);
 
     const selectedTrustee = useMemo(() => depositHolders.find(h => h.id === selectedTrusteeId), [depositHolders, selectedTrusteeId]);

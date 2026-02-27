@@ -574,7 +574,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const config = state.storeSettings.currencyConfigs[currency];
         const totalTransactional = currency === state.storeSettings.baseCurrency 
             ? totalBaseAmount 
-            : (config.method === 'multiply' ? totalBaseAmount / exchangeRate : totalBaseAmount * exchangeRate);
+            : (config.method === 'multiply' ? totalBaseAmount * exchangeRate : totalBaseAmount / exchangeRate);
 
         const invId = editingSaleInvoiceId || generateNextId('F', saleInvoices.map(i => i.id));
         
@@ -919,13 +919,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const config = state.storeSettings.currencyConfigs[invoiceData.currency || state.storeSettings.baseCurrency];
         const totalAmountBase = invoiceData.currency === state.storeSettings.baseCurrency 
             ? totalCurrencyAmount 
-            : (config.method === 'multiply' ? totalCurrencyAmount * rate : totalCurrencyAmount / rate);
+            : (config.method === 'multiply' ? totalCurrencyAmount / rate : totalCurrencyAmount * rate);
 
         const oldRate = oldInv.exchangeRate || 1;
         const oldConfig = state.storeSettings.currencyConfigs[oldInv.currency || state.storeSettings.baseCurrency];
         const oldTotalBase = oldInv.currency === state.storeSettings.baseCurrency 
             ? oldInv.totalAmount 
-            : (oldConfig.method === 'multiply' ? oldInv.totalAmount * oldRate : oldInv.totalAmount / oldRate);
+            : (oldConfig.method === 'multiply' ? oldInv.totalAmount / oldRate : oldInv.totalAmount * oldRate);
 
         let balAFN = supplier.balanceAFN, balUSD = supplier.balanceUSD, balIRT = supplier.balanceIRT, balTotal = supplier.balance;
         if (oldInv.currency === 'USD') balUSD -= oldInv.totalAmount;
@@ -1007,7 +1007,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const config = state.storeSettings.currencyConfigs[originalInv.currency || state.storeSettings.baseCurrency];
         const totalAmountBase = originalInv.currency === state.storeSettings.baseCurrency 
             ? returnTotalCurrency 
-            : (config.method === 'multiply' ? returnTotalCurrency * rate : returnTotalCurrency / rate);
+            : (config.method === 'multiply' ? returnTotalCurrency / rate : returnTotalCurrency * rate);
 
         const returnInv: PurchaseInvoice = {
             id, type: 'return', originalInvoiceId, supplierId: originalInv.supplierId,
@@ -1125,7 +1125,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const configPay = state.storeSettings.currencyConfigs[currency];
             const amountInBase = currency === state.storeSettings.baseCurrency 
                 ? amount 
-                : (configPay.method === 'multiply' ? amount * exchangeRate : amount / exchangeRate);
+                : (configPay.method === 'multiply' ? amount / exchangeRate : amount * exchangeRate);
             
             // Then, convert from base back to the invoice currency using the invoice's own historical rate
             const invoiceRate = inv.exchangeRate || 1;
@@ -1133,7 +1133,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             
             amountInInvoiceCurrency = inv.currency === state.storeSettings.baseCurrency 
                 ? amountInBase 
-                : (configInv.method === 'multiply' ? amountInBase / invoiceRate : amountInBase * invoiceRate);
+                : (configInv.method === 'multiply' ? amountInBase * invoiceRate : amountInBase / invoiceRate);
         }
 
         // 2. Create updated invoice object with the newly added payment (Immutable Update)
@@ -1165,7 +1165,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const config = state.storeSettings.currencyConfigs[initial.currency as 'AFN'|'USD'|'IRT'];
                 const baseAmount = initial.currency === state.storeSettings.baseCurrency 
                     ? initial.amount 
-                    : (config.method === 'multiply' ? initial.amount * rate : initial.amount / rate);
+                    : (config.method === 'multiply' ? initial.amount / rate : initial.amount * rate);
                 
                 const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: ns.id, type: initial.type === 'creditor' ? 'purchase' : 'payment', amount: initial.amount, date: new Date().toISOString(), description: 'تراز اول دوره', currency: initial.currency };
                 const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='creditor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'creditor' ? baseAmount : -baseAmount };
@@ -1177,7 +1177,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const addSupplierPayment = async (sid: string, a: number, d: string, cur: any = 'AFN', rate: number = 1) => {
         const s = state.suppliers.find(x => x.id === sid);
         const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
-        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a * rate : a / rate);
+        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
         const tx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: sid, type: 'payment', amount: a, date: new Date().toISOString(), description: d, currency: cur };
         const newB = { AFN: s!.balanceAFN - (cur==='AFN'?a:0), USD: s!.balanceUSD - (cur==='USD'?a:0), IRT: s!.balanceIRT - (cur==='IRT'?a:0), Total: s!.balance - baseAmount };
         await api.processPayment('supplier', sid, newB, tx);
@@ -1192,7 +1192,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const config = state.storeSettings.currencyConfigs[initial.currency as 'AFN'|'USD'|'IRT'];
                 const baseAmount = initial.currency === state.storeSettings.baseCurrency 
                     ? initial.amount 
-                    : (config.method === 'multiply' ? initial.amount * rate : initial.amount / rate);
+                    : (config.method === 'multiply' ? initial.amount / rate : initial.amount * rate);
                 
                 const tx: CustomerTransaction = { id: crypto.randomUUID(), customerId: nc.id, type: initial.type === 'debtor' ? 'credit_sale' : 'payment', amount: initial.amount, date: new Date().toISOString(), description: 'تراز اول دوره', currency: initial.currency };
                 const newB = { AFN: initial.currency === 'AFN' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, USD: initial.currency === 'USD' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, IRT: initial.currency === 'IRT' ? (initial.type==='debtor'?initial.amount:-initial.amount) : 0, Total: initial.type === 'debtor' ? baseAmount : -baseAmount };
@@ -1206,7 +1206,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (!c) return null;
         
         const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
-        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a * rate : a / rate);
+        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
         const tx: CustomerTransaction = { 
             id: crypto.randomUUID(), 
             customerId: cid, 
@@ -1250,7 +1250,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const tx: PayrollTransaction = { id: crypto.randomUUID(), employeeId: eid, type: 'advance', amount: a, currency: cur, exchangeRate: rate, date: now, description: d };
         
         const config = state.storeSettings.currencyConfigs[cur];
-        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a * rate : a / rate);
+        const baseAmount = cur === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
 
         // Auto-log to Expenses to ensure reports are accurate
         const expense: Expense = { 
@@ -1322,8 +1322,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const addExpense = (e: any) => { 
         const rate = e.exchangeRate || 1;
         const cur = e.currency || state.storeSettings.baseCurrency;
-        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
-        const baseAmount = cur === state.storeSettings.baseCurrency ? e.amount : (config.method === 'multiply' ? e.amount * rate : e.amount / rate);
+        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'IRT'|'USD'];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? e.amount : (config.method === 'multiply' ? e.amount / rate : e.amount * rate);
         
         const finalExpense = { ...e, amountBase: baseAmount };
         api.addExpense(finalExpense).then(() => fetchData(true)); 
@@ -1332,8 +1332,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updateExpense = (e: Expense) => {
         const rate = e.exchangeRate || 1;
         const cur = e.currency || state.storeSettings.baseCurrency;
-        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT'];
-        const baseAmount = cur === state.storeSettings.baseCurrency ? e.amount : (config.method === 'multiply' ? e.amount * rate : e.amount / rate);
+        const config = state.storeSettings.currencyConfigs[cur as 'AFN'|'IRT'|'USD'];
+        const baseAmount = cur === state.storeSettings.baseCurrency ? e.amount : (config.method === 'multiply' ? e.amount / rate : e.amount * rate);
         
         const finalExpense = { ...e, amountBase: baseAmount };
         api.updateExpense(finalExpense).then(() => fetchData(true));
