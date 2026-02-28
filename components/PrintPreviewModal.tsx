@@ -81,13 +81,17 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, onClose 
         const rate = invoice.exchangeRate || 1;
         const currency = invoice.currency;
 
-        let priceAFN = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
+        const baseCurrency = storeSettings.baseCurrency;
+        const currencyConfig = storeSettings.currencyConfigs[invoice.currency];
+        let priceBase = (item.type === 'product' && item.finalPrice !== undefined) ? item.finalPrice : (item.type === 'product' ? item.salePrice : item.price);
         
         let unitPriceDisplay = 0;
-        if (invoice.currency === 'AFN') {
-            unitPriceDisplay = priceAFN;
+        if (invoice.currency === baseCurrency) {
+            unitPriceDisplay = priceBase;
+        } else if (currencyConfig) {
+            unitPriceDisplay = currencyConfig.method === 'multiply' ? priceBase * rate : priceBase / rate;
         } else {
-            unitPriceDisplay = currency === 'IRT' ? priceAFN * rate : priceAFN / rate;
+            unitPriceDisplay = priceBase;
         }
 
         return {
