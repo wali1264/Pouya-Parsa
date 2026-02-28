@@ -203,9 +203,9 @@ export const api = {
     deleteExpense: async (id: string) => db.deleteItem(db.STORES.EXPENSES, id),
 
     // --- SECURITY DEPOSITS (LOCAL) ---
-    addDepositHolder: async (holder: Omit<DepositHolder, 'id' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => {
+    addDepositHolder: async (holder: Omit<DepositHolder, 'id' | 'balance' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => {
         const id = crypto.randomUUID();
-        const newHolder: DepositHolder = { ...holder, id, balanceAFN: 0, balanceUSD: 0, balanceIRT: 0, createdAt: new Date().toISOString() };
+        const newHolder: DepositHolder = { ...holder, id, balance: 0, balanceAFN: 0, balanceUSD: 0, balanceIRT: 0, createdAt: new Date().toISOString() };
         await db.putItem(db.STORES.DEPOSIT_HOLDERS, newHolder);
         return newHolder;
     },

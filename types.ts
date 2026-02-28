@@ -105,6 +105,7 @@ export interface DepositHolder {
     id: string;
     name: string;
     phone?: string;
+    balance: number; // Total equivalent in base currency (AFN)
     balanceAFN: number;
     balanceUSD: number;
     balanceIRT: number;
@@ -120,6 +121,7 @@ export interface DepositTransaction {
     description: string;
     date: string;
     exchangeRate?: number; // Rate to base currency at time of transaction
+    isCash?: boolean; // NEW: To distinguish physical cash from intermediary settlements
 }
 
 // --- Accounting Module Types ---
@@ -146,6 +148,7 @@ export interface SupplierTransaction {
     invoiceId?: string; // Link to the purchase invoice
     currency?: 'AFN' | 'USD' | 'IRT'; // Track specific currency
     exchangeRate?: number; // Rate to base currency at time of transaction
+    isCash?: boolean; // NEW: To distinguish physical cash from intermediary settlements
 }
 
 
@@ -194,6 +197,7 @@ export interface CustomerTransaction {
     invoiceId?: string; // Link to the sale invoice
     currency?: 'AFN' | 'USD' | 'IRT'; // Added currency tracking
     exchangeRate?: number; // Rate to base currency at time of transaction
+    isCash?: boolean; // NEW: To distinguish physical cash from intermediary settlements
 }
 
 export type AnyTransaction = CustomerTransaction | SupplierTransaction | PayrollTransaction | DepositTransaction;

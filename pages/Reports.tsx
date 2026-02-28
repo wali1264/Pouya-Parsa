@@ -89,7 +89,7 @@ const Reports: React.FC = () => {
             const totalStock = p.batches.reduce((s, b) => s + b.stock, 0);
             return sum + (totalStock * p.salePrice);
         }, 0);
-        const totalItems = products.reduce((sum, p) => sum + p.batches.reduce((batchSum, b) => batchSum + (b.stock * b.purchasePrice), 0), 0);
+        const totalItems = products.reduce((sum, p) => sum + p.batches.reduce((batchSum, b) => batchSum + b.stock, 0), 0);
         return { totalBookValue, totalSalesValue, totalItems, projectedProfit: totalSalesValue - totalBookValue };
     }, [products]);
 
@@ -102,7 +102,9 @@ const Reports: React.FC = () => {
             const rate = inv.exchangeRate || 1;
             const config = storeSettings.currencyConfigs[inv.currency || baseCurrency];
             const itemsValBase = inv.items.reduce((s, it) => {
-                const priceBase = config?.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate;
+                const priceBase = (inv.currency || baseCurrency) === baseCurrency 
+                    ? it.purchasePrice 
+                    : (config?.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate);
                 return s + ((it.atFactoryQty + it.inTransitQty) * priceBase);
             }, 0);
             totalValueBase += itemsValBase;
@@ -115,9 +117,9 @@ const Reports: React.FC = () => {
 
     const depositData = useMemo(() => {
         const baseCurrency = storeSettings.baseCurrency || 'AFN';
-        const totalBase = depositHolders.reduce((s, h) => s + h.balanceAFN, 0);
-        const totalUSD = depositHolders.reduce((s, h) => s + h.balanceUSD, 0);
-        const totalIRT = depositHolders.reduce((s, h) => s + h.balanceIRT, 0);
+        const totalBase = depositHolders.reduce((s, h) => s + (h.balanceAFN || 0), 0);
+        const totalUSD = depositHolders.reduce((s, h) => s + (h.balanceUSD || 0), 0);
+        const totalIRT = depositHolders.reduce((s, h) => s + (h.balanceIRT || 0), 0);
         const transactionsInRange = depositTransactions.filter(t => {
             const tTime = new Date(t.date).getTime();
             return tTime >= dateRange.start.getTime() && tTime <= dateRange.end.getTime();
@@ -129,12 +131,13 @@ const Reports: React.FC = () => {
     const cashPosition = useMemo(() => {
         const baseCurrency = storeSettings.baseCurrency || 'AFN';
         const cashInSales = saleInvoices.reduce((s, i) => {
-            if (i.type === 'sale' && !i.customerId) return s + i.totalAmountAFN;
-            if (i.type === 'return' && !i.customerId) return s - i.totalAmountAFN;
+            // Only add to cash if it's not a credit sale and NOT an intermediary sale
+            if (i.type === 'sale' && !i.customerId && !i.supplierIntermediaryId) return s + i.totalAmountAFN;
+            if (i.type === 'return' && !i.customerId && !i.supplierIntermediaryId) return s - i.totalAmountAFN;
             return s;
         }, 0);
 
-        const cashInCollections = customerTransactions.filter(t => t.type === 'payment').reduce((s, t) => {
+        const cashInCollections = customerTransactions.filter(t => t.type === 'payment' && t.isCash !== false).reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
             const currency = (t as any).currency || baseCurrency;
             const config = storeSettings.currencyConfigs[currency];
@@ -142,14 +145,14 @@ const Reports: React.FC = () => {
             return s + amountBase;
         }, 0);
 
-        const cashInDeposits = depositTransactions.filter(t => t.type === 'deposit').reduce((s, t) => {
+        const cashInDeposits = depositTransactions.filter(t => t.type === 'deposit' && t.isCash !== false).reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1; 
             const config = storeSettings.currencyConfigs[t.currency || storeSettings.baseCurrency];
             const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
             return s + amountBase;
         }, 0);
 
-        const cashOutSuppliers = supplierTransactions.filter(t => t.type === 'payment').reduce((s, t) => {
+        const cashOutSuppliers = supplierTransactions.filter(t => t.type === 'payment' && t.isCash !== false).reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
             const currency = (t as any).currency || baseCurrency;
             const config = storeSettings.currencyConfigs[currency];
@@ -159,7 +162,7 @@ const Reports: React.FC = () => {
 
         const cashOutExpenses = expenses.reduce((s, e) => s + (e.amountBase || e.amount), 0);
 
-        const cashOutDeposits = depositTransactions.filter(t => t.type === 'withdrawal').reduce((s, t) => {
+        const cashOutDeposits = depositTransactions.filter(t => t.type === 'withdrawal' && t.isCash !== false).reduce((s, t) => {
             const rate = (t as any).exchangeRate || 1;
             const config = storeSettings.currencyConfigs[t.currency || storeSettings.baseCurrency];
             const amountBase = config?.method === 'multiply' ? t.amount / rate : t.amount * rate;
@@ -175,14 +178,13 @@ const Reports: React.FC = () => {
         const suppPay = suppliers.reduce((sum, s) => sum + (s.balance > 0 ? s.balance : 0), 0);
         const deferredAssets = supplyChainData.totalValueBase;
         
-        // Segregate deposits into assets (when they owe us) and liabilities (when we owe them)
-        // Note: For now we use the AFN balance as a proxy, but ideally we'd convert all 3 balances
+        // Segregate deposits into assets (when they owe us - Besan-kari) and liabilities (when we owe them - Amanat)
         const depositAssets = depositHolders.reduce((s, h) => {
-            const baseBalance = h.balanceAFN; // Simplified for now, but better than before
+            const baseBalance = h.balance || h.balanceAFN; // Fallback for legacy data
             return s + (baseBalance < 0 ? Math.abs(baseBalance) : 0);
         }, 0);
         const depositLiabilities = depositHolders.reduce((s, h) => {
-            const baseBalance = h.balanceAFN;
+            const baseBalance = h.balance || h.balanceAFN;
             return s + (baseBalance > 0 ? baseBalance : 0);
         }, 0);
         
@@ -209,16 +211,16 @@ const Reports: React.FC = () => {
             return t.type === 'payment' && tTime >= dateRange.start.getTime() && tTime <= dateRange.end.getTime();
         });
         return { 
-            totalAFN: filtered.reduce((s, t) => {
+            totalBase: filtered.reduce((s, t) => {
                 const rate = (t as any).exchangeRate || 1;
                 const config = storeSettings.currencyConfigs[(t as any).currency || storeSettings.baseCurrency];
-                const amountBase = (t as any).currency === storeSettings.baseCurrency ? t.amount : (config?.method === 'multiply' ? t.amount / rate : t.amount * rate);
+                const amountBase = ((t as any).currency || storeSettings.baseCurrency) === storeSettings.baseCurrency ? t.amount : (config?.method === 'multiply' ? t.amount / rate : t.amount * rate);
                 return s + amountBase;
             }, 0), 
             count: filtered.length,
             details: filtered.map(t => ({ ...t, customerName: customers.find(c => c.id === t.customerId)?.name || 'ناشناس' }))
         };
-    }, [customerTransactions, dateRange, customers]);
+    }, [customerTransactions, dateRange, customers, storeSettings]);
 
     // --- Itemized Stats Summary (General View) ---
     const aggregatedItemStats = useMemo(() => {
@@ -236,19 +238,19 @@ const Reports: React.FC = () => {
                 const rate = inv.exchangeRate || 1;
                 const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
                 inv.items.forEach(item => {
-                    const priceAFN = inv.currency === storeSettings.baseCurrency ? item.purchasePrice : (config?.method === 'multiply' ? item.purchasePrice / rate : item.purchasePrice * rate);
-                    const valueAFN = priceAFN * item.quantity;
+                    const priceBase = (inv.currency || storeSettings.baseCurrency) === storeSettings.baseCurrency ? item.purchasePrice : (config?.method === 'multiply' ? item.purchasePrice / rate : item.purchasePrice * rate);
+                    const valueBase = priceBase * item.quantity;
                     const existing = results.get(item.productId);
                     if (existing) {
                         existing.quantity += item.quantity;
-                        existing.totalValue += valueAFN;
+                        existing.totalValue += valueBase;
                     } else {
                         const product = products.find(p => p.id === item.productId);
                         results.set(item.productId, {
                             id: item.productId,
                             name: item.productName,
                             quantity: item.quantity,
-                            totalValue: valueAFN,
+                            totalValue: valueBase,
                             itemsPerPackage: product?.itemsPerPackage || 1
                         });
                     }
@@ -266,18 +268,18 @@ const Reports: React.FC = () => {
                 const rate = inv.exchangeRate || 1;
                 inv.items.forEach(item => {
                     if (item.type !== 'product') return;
-                    const originalPriceAFN = item.finalPrice ?? item.salePrice;
-                    const valueAFN = originalPriceAFN * item.quantity;
+                    const originalPriceBase = item.finalPrice ?? item.salePrice;
+                    const valueBase = originalPriceBase * item.quantity;
                     const existing = results.get(item.id);
                     if (existing) {
                         existing.quantity += item.quantity;
-                        existing.totalValue += valueAFN;
+                        existing.totalValue += valueBase;
                     } else {
                         results.set(item.id, {
                             id: item.id,
                             name: item.name,
                             quantity: item.quantity,
-                            totalValue: valueAFN,
+                            totalValue: valueBase,
                             itemsPerPackage: (item as any).itemsPerPackage || 1
                         });
                     }
@@ -307,18 +309,18 @@ const Reports: React.FC = () => {
                         .filter(it => it.productId === selectedProductId)
                         .map(it => {
                             const rate = inv.exchangeRate || 1;
-                            const config = storeSettings.currencyConfigs[inv.currency || 'AFN'];
-                            const priceAFN = inv.currency === 'AFN' ? it.purchasePrice : (config?.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate);
+                            const config = storeSettings.currencyConfigs[inv.currency || storeSettings.baseCurrency];
+                            const priceBase = (inv.currency || storeSettings.baseCurrency) === storeSettings.baseCurrency ? it.purchasePrice : (config?.method === 'multiply' ? it.purchasePrice / rate : it.purchasePrice * rate);
                             return {
                                 id: inv.id + it.lotNumber,
                                 date: inv.timestamp,
                                 entityName: supplier?.name || 'ناشناس',
                                 price: it.purchasePrice,
-                                currency: inv.currency || 'AFN',
+                                currency: inv.currency || storeSettings.baseCurrency,
                                 rate: rate,
                                 quantity: it.quantity,
                                 lot: it.lotNumber,
-                                totalAFN: priceAFN * it.quantity
+                                totalBase: priceBase * it.quantity
                             };
                         });
                 }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -337,18 +339,18 @@ const Reports: React.FC = () => {
                         .filter(it => it.id === selectedProductId && it.type === 'product')
                         .map(it => {
                             const originalItem = it as InvoiceItem;
-                            const salePriceAFN = originalItem.finalPrice ?? originalItem.salePrice;
-                            const totalSaleAFN = salePriceAFN * it.quantity;
-                            const totalCostAFN = (originalItem.purchasePrice || 0) * it.quantity;
+                            const salePriceBase = originalItem.finalPrice ?? originalItem.salePrice;
+                            const totalSaleBase = salePriceBase * it.quantity;
+                            const totalCostBase = (originalItem.purchasePrice || 0) * it.quantity;
                             return {
                                 id: inv.id,
                                 date: inv.timestamp,
                                 entityName: customer?.name || 'مشتری گذری',
-                                priceAFN: salePriceAFN,
-                                purchasePriceAFN: originalItem.purchasePrice,
+                                priceBase: salePriceBase,
+                                purchasePriceBase: originalItem.purchasePrice,
                                 quantity: it.quantity,
-                                totalSaleAFN: totalSaleAFN,
-                                profitAFN: totalSaleAFN - totalCostAFN
+                                totalSaleBase: totalSaleBase,
+                                profitBase: totalSaleBase - totalCostBase
                             };
                         });
                 }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -472,9 +474,13 @@ const Reports: React.FC = () => {
                 return (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <SmartStatCard title="کل امانات (افغانی)" value={Math.round(depositData.totalAFN).toLocaleString()} color="text-indigo-600" icon={<SafeIcon/>}/>
-                            <SmartStatCard title="کل امانات (دلار)" value={depositData.totalUSD.toLocaleString()} color="text-emerald-600" icon={<SafeIcon/>}/>
-                            <SmartStatCard title="کل امانات (تومان)" value={depositData.totalIRT.toLocaleString()} color="text-orange-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title="کل امانات (افغانی)" value={Math.round(depositHolders.reduce((s,h)=>s+h.balanceAFN, 0)).toLocaleString()} color="text-indigo-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title="کل امانات (دلار)" value={depositHolders.reduce((s,h)=>s+h.balanceUSD, 0).toLocaleString()} color="text-emerald-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title="کل امانات (تومان)" value={depositHolders.reduce((s,h)=>s+h.balanceIRT, 0).toLocaleString()} color="text-orange-600" icon={<SafeIcon/>}/>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <SmartStatCard title="مجموع طلب از امانت‌گذاران (بسان‌کاری)" value={formatCurrency(financialPositionData.netDepositAsset, storeSettings)} color="text-blue-600" icon={<ReportsIcon/>}/>
+                            <SmartStatCard title="مجموع بدهی به امانت‌گذاران (امانات)" value={formatCurrency(financialPositionData.netDepositLiability, storeSettings)} color="text-indigo-600" icon={<SafeIcon/>}/>
                         </div>
                         <div className="p-6 bg-indigo-50 rounded-3xl border border-indigo-200">
                              <h4 className="font-black text-indigo-800 mb-2">تراز صندوق امانات</h4>
@@ -494,10 +500,8 @@ const Reports: React.FC = () => {
                                 <SmartStatCard title="موجودی انبار (AFN)" value={formatCurrency(financialPositionData.inventoryValue, storeSettings)} color="text-slate-800" />
                                 <SmartStatCard title="موجودی نقد (تخمینی)" value={formatCurrency(financialPositionData.cashInHand, storeSettings)} color="text-blue-700" icon={<SafeIcon />} />
                                 <SmartStatCard title="طلب از مشتریان (AFN)" value={formatCurrency(financialPositionData.customerReceivables, storeSettings)} color="text-slate-800" />
+                                <SmartStatCard title="بسان‌کاری (طلب از امانات)" value={formatCurrency(financialPositionData.netDepositAsset, storeSettings)} color="text-blue-600" />
                                 <SmartStatCard title="کالای نرسیده (Deferred)" value={formatCurrency(financialPositionData.deferredAssets, storeSettings)} color="text-blue-600" />
-                                {financialPositionData.netDepositAsset > 0 && (
-                                    <SmartStatCard title="طلب از واسط‌ها (امانات)" value={formatCurrency(financialPositionData.netDepositAsset, storeSettings)} color="text-indigo-600" />
-                                )}
                             </div>
                             <div className="space-y-4">
                                 <h3 className="font-black text-red-700 flex items-center gap-2 px-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> بدهی‌ها</h3>
@@ -528,7 +532,7 @@ const Reports: React.FC = () => {
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                                 <h3 className="font-black text-slate-800 text-lg flex items-center gap-2"><div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div> مبالغ دریافتی از مشتریان (وصولی)</h3>
                                 <div className="bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
-                                    <span className="text-xs font-bold text-emerald-700">مجموع وصولی (AFN): {formatCurrency(collectionsData.totalAFN, storeSettings)}</span>
+                                    <span className="text-xs font-bold text-emerald-700">مجموع وصولی ({storeSettings.baseCurrency}): {formatCurrency(collectionsData.totalBase, storeSettings)}</span>
                                 </div>
                             </div>
                             <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -611,9 +615,9 @@ const Reports: React.FC = () => {
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr>
                                                 <th className="p-5 font-black text-slate-500 text-sm text-right pr-10">نام محصول (الفبا)</th>
-                                                <th className="p-5 font-black text-slate-500 text-sm">میانگین فی واحد (AFN)</th>
+                                                <th className="p-5 font-black text-slate-500 text-sm">میانگین فی واحد ({storeSettings.baseCurrency})</th>
                                                 <th className="p-5 font-black text-slate-500 text-sm">مقدار کل</th>
-                                                <th className="p-5 font-black text-slate-500 text-sm">ارزش کل (AFN)</th>
+                                                <th className="p-5 font-black text-slate-500 text-sm">ارزش کل ({storeSettings.baseCurrency})</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -650,15 +654,15 @@ const Reports: React.FC = () => {
                                                     <td className="p-4 text-[10px] font-bold text-slate-400">{new Date(tx.date).toLocaleDateString('fa-IR')}</td>
                                                     <td className="p-4 font-bold text-slate-800">{tx.entityName}</td>
                                                     <td className="p-4 font-mono font-black" dir="ltr">{(() => {
-                                                        if (tx.priceAFN !== undefined) return tx.priceAFN.toLocaleString();
+                                                        if (tx.priceBase !== undefined) return tx.priceBase.toLocaleString();
                                                         const rate = tx.rate || 1;
-                                                        const config = storeSettings.currencyConfigs[tx.currency || 'AFN'];
-                                                        const priceAFN = tx.currency === 'AFN' ? tx.price : (config?.method === 'multiply' ? tx.price / rate : tx.price * rate);
-                                                        return priceAFN.toLocaleString();
+                                                        const config = storeSettings.currencyConfigs[tx.currency || storeSettings.baseCurrency];
+                                                        const priceBase = (tx.currency || storeSettings.baseCurrency) === storeSettings.baseCurrency ? tx.price : (config?.method === 'multiply' ? tx.price / rate : tx.price * rate);
+                                                        return priceBase.toLocaleString();
                                                     })()}</td>
                                                     <td className="p-4 font-bold text-slate-600">{formatStockToPackagesAndUnits(tx.quantity, storeSettings, (products.find(p=>p.id===selectedProductId)?.itemsPerPackage || 1))}</td>
-                                                    {statsType === 'sales' && <td className="p-4 font-black text-emerald-600" dir="ltr">{Math.round(tx.profitAFN).toLocaleString()}</td>}
-                                                    <td className="p-4 font-black text-blue-600" dir="ltr">{Math.round(tx.totalAFN ?? tx.totalSaleAFN).toLocaleString()}</td>
+                                                    {statsType === 'sales' && <td className="p-4 font-black text-emerald-600" dir="ltr">{Math.round(tx.profitBase).toLocaleString()}</td>}
+                                                    <td className="p-4 font-black text-blue-600" dir="ltr">{Math.round(tx.totalBase ?? tx.totalSaleBase).toLocaleString()}</td>
                                                 </tr>
                                             ))}
                                             {detailedProductStats.length === 0 && (
@@ -679,11 +683,11 @@ const Reports: React.FC = () => {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">میانگین فی</p>
-                                                <p className="font-bold text-slate-600 text-sm" dir="ltr">{Math.round(item.totalValue / item.quantity).toLocaleString()} AFN</p>
+                                                <p className="font-bold text-slate-600 text-sm" dir="ltr">{Math.round(item.totalValue / item.quantity).toLocaleString()} {storeSettings.baseCurrency}</p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">ارزش کل</p>
-                                                <p className="font-black text-blue-600" dir="ltr">{Math.round(item.totalValue).toLocaleString()} AFN</p>
+                                                <p className="font-black text-blue-600" dir="ltr">{Math.round(item.totalValue).toLocaleString()} {storeSettings.baseCurrency}</p>
                                             </div>
                                             <div className="col-span-2 bg-slate-50 p-2 rounded-xl border border-slate-100 mt-2">
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">مقدار کل معامله شده</p>

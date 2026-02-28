@@ -93,9 +93,9 @@ interface AppContextType extends AppState {
     deleteExpense: (id: string) => void;
 
     // Security Deposits
-    addDepositHolder: (holder: Omit<DepositHolder, 'id' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => Promise<void>;
+    addDepositHolder: (holder: Omit<DepositHolder, 'id' | 'balance' | 'balanceAFN' | 'balanceUSD' | 'balanceIRT' | 'createdAt'>) => Promise<void>;
     deleteDepositHolder: (id: string) => Promise<void>;
-    processDepositTransaction: (holderId: string, type: 'deposit' | 'withdrawal', amount: number, currency: 'AFN' | 'USD' | 'IRT', description: string, exchangeRate?: number) => Promise<{ success: boolean; message: string }>;
+    processDepositTransaction: (holderId: string, type: 'deposit' | 'withdrawal', amount: number, currency: 'AFN' | 'USD' | 'IRT', description: string, exchangeRate?: number, isCash?: boolean) => Promise<{ success: boolean; message: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -690,8 +690,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
         }
 
-        const customerTx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: totalTransactional, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency };
-        const supplierTx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: supplierIntermediaryId || '', type: 'payment', amount: totalTransactional, date: finalInv.timestamp, description: `فروش کالا (واسطه) - فاکتور #${invId}`, invoiceId: invId, currency };
+        const customerTx: CustomerTransaction = { id: crypto.randomUUID(), customerId: customerId || '', type: 'credit_sale', amount: totalTransactional, date: finalInv.timestamp, description: `فاکتور #${invId}`, invoiceId: invId, currency, isCash: !customerId };
+        const supplierTx: SupplierTransaction = { id: crypto.randomUUID(), supplierId: supplierIntermediaryId || '', type: 'payment', amount: totalTransactional, date: finalInv.timestamp, description: `فروش کالا (واسطه) - فاکتور #${invId}`, invoiceId: invId, currency, isCash: false };
 
         try {
             if (editingSaleInvoiceId) {
@@ -1206,7 +1206,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             date: new Date().toISOString(), 
             description: d, 
             currency: cur,
-            exchangeRate: rate
+            exchangeRate: rate,
+            isCash: true
         };
         const newB = { AFN: s!.balanceAFN - (cur==='AFN'?a:0), USD: s!.balanceUSD - (cur==='USD'?a:0), IRT: s!.balanceIRT - (cur==='IRT'?a:0), Total: s!.balance - baseAmount };
         await api.processPayment('supplier', sid, newB, tx);
@@ -1244,7 +1245,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             date: new Date().toISOString(), 
             description: d + (trusteeId ? ' (تحویل به واسطه)' : ''), 
             currency: cur,
-            exchangeRate: rate
+            exchangeRate: rate,
+            isCash: !trusteeId // If trustee is involved, it's not physical cash for us
         };
         
         const newB = { 
@@ -1262,7 +1264,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 'withdrawal', 
                 a, 
                 cur, 
-                `دریافتی از مشتری: ${c.name} - بابت: ${d}`
+                `دریافتی از مشتری: ${c.name} - بابت: ${d}`,
+                rate,
+                false // isCash = false
             );
         }
 
@@ -1374,7 +1378,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     const addDepositHolder = async (h: any) => { await api.addDepositHolder(h); await fetchData(true); };
     const deleteDepositHolder = async (id: string) => { await api.deleteDepositHolder(id); await fetchData(true); };
-    const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string, rate: number = 1) => {
+    const processDepositTransaction = async (hid: string, t: any, a: number, c: any, d: string, rate: number = 1, isCash: boolean = true) => {
         const holder = state.depositHolders.find(x => x.id === hid);
         const tx: DepositTransaction = { 
             id: crypto.randomUUID(), 
@@ -1384,13 +1388,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             currency: c, 
             description: d, 
             date: new Date().toISOString(),
-            exchangeRate: rate
+            exchangeRate: rate,
+            isCash
         };
+        
+        const config = state.storeSettings.currencyConfigs[c as 'AFN'|'USD'|'IRT'];
+        const baseAmount = c === state.storeSettings.baseCurrency ? a : (config.method === 'multiply' ? a / rate : a * rate);
+        
         const newH = { ...holder! };
         const factor = t === 'deposit' ? 1 : -1;
         if (c === 'USD') newH.balanceUSD += factor * a; 
         else if (c === 'IRT') newH.balanceIRT += factor * a; 
         else newH.balanceAFN += factor * a;
+        
+        newH.balance = (newH.balance || 0) + (factor * baseAmount);
+
         await api.updateDepositHolder(newH);
         await api.addDepositTransaction(tx);
         await fetchData(true);
