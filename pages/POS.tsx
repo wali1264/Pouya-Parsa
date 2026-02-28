@@ -587,16 +587,18 @@ const POS: React.FC = () => {
     };
 
     const processBarcode = useCallback((scannedCode: string) => {
-        const product = products.find(p => p.barcode === scannedCode);
+        const englishCode = toEnglishDigits(scannedCode);
+        const product = products.find(p => p.barcode === englishCode);
         if (product) {
             const result = contextAddToCart(product, 'product');
             if(result.success) {
                 showToast(`"${product.name}" اضافه شد.`);
+                setSearchTerm('');
             } else if (result.message) {
                 showToast(result.message);
             }
         } else {
-            showToast(`محصولی با بارکد "${scannedCode}" یافت نشد.`);
+            showToast(`محصولی با بارکد "${englishCode}" یافت نشد.`);
         }
     }, [products, contextAddToCart]);
 
@@ -608,15 +610,18 @@ const POS: React.FC = () => {
             const isModalOpen = document.querySelector('.modal-animate');
             if (isModalOpen) return;
 
+            const target = e.target as HTMLElement;
+            const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
             if (e.key === 'Enter') {
                 if (barcodeBuffer.current.length > 2) {
                     processBarcode(barcodeBuffer.current);
                 }
                 barcodeBuffer.current = '';
-                e.preventDefault();
+                if (!isInput) e.preventDefault();
             } else if (e.key.length === 1) { 
                 barcodeBuffer.current += e.key;
-                e.preventDefault();
+                if (!isInput) e.preventDefault();
             }
 
             if (barcodeTimeout.current) clearTimeout(barcodeTimeout.current);

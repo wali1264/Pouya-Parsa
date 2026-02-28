@@ -454,7 +454,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                         {isDetailsOpen && (
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-5 animate-fade-in">
                                 <FormInput label=" کد محصول (بارکد)" id="barcode" name="barcode" type="text" value={formData.barcode} onChange={handleInputChange} placeholder="اسکن بارکد" onKeyDown={handleKeyDown} />
-                                <FormInput label="شرکت سازنده" id="manufacturer" name="manufacturer" type="text" value={formData.manufacturer} onChange={handleInputChange} onKeyDown={handleKeyDown} />
                                 <FormInput label="تاریخ انقضا" id="expiryDate" name="expiryDate" type="date" value={formData.expiryDate} onChange={handleInputChange} onKeyDown={handleKeyDown} error={errors.expiryDate} disabled={!!product}/>
                             </div>
                         )}
