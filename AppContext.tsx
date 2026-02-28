@@ -302,21 +302,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logout = async (type: 'full' | 'switch'): Promise<{ success: boolean; message: string }> => {
         setIsLoggingOut(true);
-        localStorage.removeItem('kasebyar_staff_user');
+        
         if (type === 'full') {
+            if (!navigator.onLine) {
+                setIsLoggingOut(false);
+                return { success: false, message: '⚠️ خروج کامل نیاز به اینترنت دارد.' };
+            }
             try {
-                localStorage.removeItem('kasebyar_user_identity');
                 const { data: { user } } = await supabase.auth.getUser();
-                if (user && navigator.onLine) await api.updateProfile(user.id, { current_device_id: null });
+                if (user) {
+                    // Attempt to clear the session on the server first
+                    const success = await api.updateProfile(user.id, { current_device_id: null });
+                    if (!success) {
+                        setIsLoggingOut(false);
+                        return { success: false, message: '❌ خطا در آزادسازی نشست از سرور. مجدد تلاش کنید.' };
+                    }
+                }
                 await supabase.auth.signOut();
+                
+                // Only clear local storage if server-side operations succeeded
+                localStorage.removeItem('kasebyar_user_identity');
                 localStorage.removeItem('kasebyar_offline_auth');
                 localStorage.setItem('kasebyar_shop_active', 'false');
                 setIsShopActive(false);
-            } catch (e) {}
+            } catch (e) {
+                setIsLoggingOut(false);
+                return { success: false, message: '❌ خطا در فرآیند خروج. اتصال را بررسی کنید.' };
+            }
         }
+        
+        localStorage.removeItem('kasebyar_staff_user');
         localStorage.setItem('kasebyar_session_locked', 'true');
-        setTimeout(() => { setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); setIsLoggingOut(false); }, 500);
-        return { success: true, message: 'خروج با موفقیت انجام شد.' };
+        
+        // Short delay for smooth transition
+        setTimeout(() => { 
+            setState(prev => ({ ...prev, isAuthenticated: false, currentUser: null })); 
+            setIsLoggingOut(false); 
+        }, 500);
+        
+        return { success: true, message: type === 'full' ? '✅ خروج کامل و قفل فروشگاه انجام شد.' : '✅ نشست شما بسته شد. فروشگاه باز است.' };
     };
 
     const hasPermission = useCallback((permission: Permission): boolean => {
