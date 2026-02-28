@@ -28,21 +28,10 @@ const SecurityDeposits: React.FC = () => {
     const [selectedHolder, setSelectedHolder] = useState<DepositHolder | null>(null);
     const [transactionType, setTransactionType] = useState<'deposit' | 'withdrawal'>('deposit');
     const [selectedCurrency, setSelectedCurrency] = useState<'AFN' | 'USD' | 'IRT'>('AFN');
-    const [transactionAmount, setTransactionAmount] = useState<string>('');
-    const [exchangeRate, setExchangeRate] = useState<string>('1');
     const [historyModalHolder, setHistoryModalHolder] = useState<DepositHolder | null>(null);
     const [toast, setToast] = useState('');
 
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
-
-    const handleOpenTransactionModal = (holder: DepositHolder, type: 'deposit' | 'withdrawal') => {
-        setSelectedHolder(holder);
-        setTransactionType(type);
-        setTransactionAmount('');
-        setExchangeRate('1');
-        setSelectedCurrency(storeSettings.baseCurrency as any);
-        setIsTransactionModalOpen(true);
-    };
 
     const handleAddHolder = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -168,8 +157,8 @@ const SecurityDeposits: React.FC = () => {
                                             <td className="p-4">
                                                 <div className="flex justify-center gap-2">
                                                     <button onClick={() => setHistoryModalHolder(h)} className="p-2 rounded-xl text-indigo-600 hover:bg-indigo-100 transition-colors" title="ریز تراکنش‌ها"><EyeIcon className="w-6 h-6"/></button>
-                                                    <button onClick={() => handleOpenTransactionModal(h, 'deposit')} className="bg-emerald-500 text-white px-3 py-2 rounded-xl text-xs font-black shadow-md hover:shadow-emerald-100 transition-all">واریز</button>
-                                                    <button onClick={() => handleOpenTransactionModal(h, 'withdrawal')} className="bg-orange-500 text-white px-3 py-2 rounded-xl text-xs font-black shadow-md hover:shadow-orange-100 transition-all">برداشت</button>
+                                                    <button onClick={() => { setSelectedHolder(h); setTransactionType('deposit'); setIsTransactionModalOpen(true); }} className="bg-emerald-500 text-white px-3 py-2 rounded-xl text-xs font-black shadow-md hover:shadow-emerald-100 transition-all">واریز</button>
+                                                    <button onClick={() => { setSelectedHolder(h); setTransactionType('withdrawal'); setIsTransactionModalOpen(true); }} className="bg-orange-500 text-white px-3 py-2 rounded-xl text-xs font-black shadow-md hover:shadow-orange-100 transition-all">برداشت</button>
                                                     <button onClick={() => handleDelete(h)} className={`p-2 rounded-xl transition-all ${(h.balanceAFN===0 && h.balanceUSD===0 && h.balanceIRT===0) ? 'text-red-400 hover:bg-red-50' : 'text-slate-200 cursor-not-allowed'}`} disabled={h.balanceAFN!==0 || h.balanceUSD!==0 || h.balanceIRT!==0}><TrashIcon className="w-5 h-5"/></button>
                                                 </div>
                                             </td>
@@ -211,8 +200,8 @@ const SecurityDeposits: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex gap-2 pt-3 border-t border-dashed">
-                                        <button onClick={() => handleOpenTransactionModal(h, 'deposit')} className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-black text-sm active:scale-95 transition-transform">واریز امانت</button>
-                                        <button onClick={() => handleOpenTransactionModal(h, 'withdrawal')} className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-black text-sm active:scale-95 transition-transform">برداشت</button>
+                                        <button onClick={() => { setSelectedHolder(h); setTransactionType('deposit'); setIsTransactionModalOpen(true); }} className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-black text-sm active:scale-95 transition-transform">واریز امانت</button>
+                                        <button onClick={() => { setSelectedHolder(h); setTransactionType('withdrawal'); setIsTransactionModalOpen(true); }} className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-black text-sm active:scale-95 transition-transform">برداشت</button>
                                     </div>
                                 </div>
                             ))}
@@ -307,10 +296,10 @@ const SecurityDeposits: React.FC = () => {
                                     name="exchangeRate" 
                                     type="text" 
                                     inputMode="decimal" 
-                                    value={exchangeRate}
-                                    onChange={(e:any) => setExchangeRate(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
+                                    onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} 
                                     className="w-full p-3 border-2 border-white rounded-xl focus:border-blue-500 outline-none font-black text-lg text-center text-blue-800" 
                                     placeholder="1.0" 
+                                    defaultValue="1"
                                     required 
                                     disabled={isProcessing} 
                                 />
@@ -318,35 +307,7 @@ const SecurityDeposits: React.FC = () => {
                         )}
                         <div>
                             <label className="block text-sm font-bold text-indigo-900 mb-2">مبلغ تراکنش</label>
-                            <input 
-                                name="amount" 
-                                type="text" 
-                                inputMode="decimal" 
-                                value={transactionAmount}
-                                onChange={(e:any) => setTransactionAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} 
-                                className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-2xl text-center text-indigo-800" 
-                                placeholder="0" 
-                                required 
-                                disabled={isProcessing} 
-                            />
-                            {selectedCurrency !== storeSettings.baseCurrency && transactionAmount && !isNaN(Number(transactionAmount)) && !isNaN(Number(exchangeRate)) && Number(exchangeRate) > 0 && (
-                                <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center">
-                                    <span className="text-xs font-bold text-slate-500">معادل به {storeSettings.baseCurrency}:</span>
-                                    <span className="font-black text-indigo-600" dir="ltr">
-                                        {(() => {
-                                            const amount = Number(transactionAmount);
-                                            const rate = Number(exchangeRate);
-                                            const config = storeSettings.currencyConfigs[selectedCurrency];
-                                            const baseAmount = config.method === 'multiply' ? amount / rate : amount * rate;
-                                            
-                                            return new Intl.NumberFormat('en-US', {
-                                                minimumFractionDigits: 0,
-                                                maximumFractionDigits: 2
-                                            }).format(baseAmount);
-                                        })()} {storeSettings.baseCurrency}
-                                    </span>
-                                </div>
-                            )}
+                            <input name="amount" type="text" inputMode="decimal" onInput={(e:any) => e.target.value = toEnglishDigits(e.target.value).replace(/[^0-9.]/g, '')} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-2xl text-center text-indigo-800" placeholder="0" required disabled={isProcessing} />
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-indigo-900 mb-2">شرح تراکنش (بابتِ...)</label>
