@@ -58,11 +58,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, storeName,
 
   const handleLogoutAction = async (type: 'full' | 'switch') => {
     if (isLoggingOut) return;
-    const res = await logout(type);
-    showToast(res.message);
-    if (res.success) {
-        setShowLogoutMenu(false);
+    if (type === 'full' && !isOnline) {
+        showToast("⚠️ خروج کامل مدیر نیاز به اینترنت دارد.");
+        return;
     }
+    const res = await logout(type);
+    if (res.success) {
+        showToast(type === 'full' ? "✅ خروج کامل و قفل فروشگاه انجام شد." : "✅ نشست شما بسته شد. فروشگاه باز است.");
+    }
+    setShowLogoutMenu(false);
   };
 
   // Managers are identified by the 'system-super-owner' role ID
@@ -148,14 +152,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, storeName,
                           <p className="text-[10px] opacity-70">فروشگاه باز می‌ماند (برای کارکنان)</p>
                       </div>
                   </button>
-                  <button 
-                      onClick={() => handleLogoutAction('full')} 
-                      disabled={!isOnline || isLoggingOut}
-                      className={`w-full text-right p-3 rounded-lg flex items-center gap-2 transition-all ${!isOnline ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-400' : 'hover:bg-red-50 text-red-700'}`}
-                  >
+                  <button onClick={() => handleLogoutAction('full')} className="w-full text-right p-3 rounded-lg hover:bg-red-50 text-red-700 flex items-center gap-2">
                       <KeyIcon className="w-5 h-5" />
                       <div>
-                          <p className="font-bold">خروج کامل و قفل {!isOnline && '(نیاز به اینترنت)'}</p>
+                          <p className="font-bold">خروج کامل و قفل</p>
                           <p className="text-[10px] opacity-70">دستگاه آزاد و فروشگاه بسته می‌شود</p>
                       </div>
                   </button>
