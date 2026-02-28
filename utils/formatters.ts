@@ -11,20 +11,21 @@ export const toEnglishDigits = (str: string): string => {
 export const formatStockToPackagesAndUnits = (totalStock: number, settings: StoreSettings, itemsPerPackage?: number): string => {
     const pLabel = settings.packageLabel || 'بسته';
     const uLabel = settings.unitLabel || 'عدد';
+    const totalFormatted = (totalStock || 0).toLocaleString('fa-IR');
 
     if (!itemsPerPackage || itemsPerPackage <= 1) {
-        return `${(totalStock || 0).toLocaleString('fa-IR')} ${uLabel}`;
+        return `${totalFormatted} ${uLabel}`;
     }
     const packages = Math.floor(totalStock / itemsPerPackage);
     const units = totalStock % itemsPerPackage;
 
     if (packages > 0 && units > 0) {
-        return `${packages.toLocaleString('fa-IR')} ${pLabel} و ${units.toLocaleString('fa-IR')} ${uLabel}`;
+        return `${packages.toLocaleString('fa-IR')} ${pLabel} و ${units.toLocaleString('fa-IR')} ${uLabel} (${totalFormatted} ${uLabel})`;
     }
     if (packages > 0) {
-        return `${packages.toLocaleString('fa-IR')} ${pLabel}`;
+        return `${packages.toLocaleString('fa-IR')} ${pLabel} (${totalFormatted} ${uLabel})`;
     }
-    return `${units.toLocaleString('fa-IR')} ${uLabel}`;
+    return `${units.toLocaleString('fa-IR')} ${uLabel} (${totalFormatted} ${uLabel})`;
 };
 
 

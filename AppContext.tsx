@@ -431,6 +431,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const addToCart = (item: any, type: any) => {
         let success = true;
+        let message = '';
+        
+        if (type === 'product') {
+            const product = state.products.find(p => p.id === item.id);
+            const totalStock = product?.batches.reduce((sum, b) => sum + b.stock, 0) || 0;
+            const inCart = state.cart.find(i => i.id === item.id && i.type === 'product')?.quantity || 0;
+            
+            if (inCart + 1 > totalStock) {
+                return { success: false, message: `موجودی کافی نیست! (موجودی کل: ${totalStock})` };
+            }
+        }
+
         setState(prev => {
             const existingIndex = prev.cart.findIndex(i => i.id === item.id && i.type === type);
             let newCart = [...prev.cart];
@@ -471,6 +483,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     const updateCartItemQuantity = (id: string, type: any, qty: number) => {
+        if (type === 'product') {
+            const product = state.products.find(p => p.id === id);
+            const totalStock = product?.batches.reduce((sum, b) => sum + b.stock, 0) || 0;
+            if (qty > totalStock) {
+                return { success: false, message: `تعداد انتخابی (${qty}) از موجودی انبار (${totalStock}) بیشتر است!` };
+            }
+        }
+
         setState(prev => {
             const newCart = prev.cart.map(i => (i.id === id && i.type === type) ? { ...i, quantity: qty } : i).filter(i => i.quantity > 0);
             
