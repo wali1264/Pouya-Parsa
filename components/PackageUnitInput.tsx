@@ -65,7 +65,10 @@ const PackageUnitInput: React.FC<PackageUnitInputProps> = ({ totalUnits, itemsPe
     }, [totalUnits, itemsPerPackage]);
 
     const processChange = (pVal: number, uVal: number) => {
-        const total = parseToTotalUnits(pVal, uVal, itemsPerPackage);
+        let total = parseToTotalUnits(pVal, uVal, itemsPerPackage);
+        if (maxUnits !== undefined && total > maxUnits) {
+            total = maxUnits;
+        }
         const { packages: normP, units: normU } = parseToPackageAndUnits(total, itemsPerPackage);
         setPackages(String(normP));
         setUnits(String(normU));
@@ -111,11 +114,15 @@ const PackageUnitInput: React.FC<PackageUnitInputProps> = ({ totalUnits, itemsPe
                     disableIncrement={isMaxReached}
                  />
             </div>
-            {isError && (
+            {isError ? (
                 <span className="text-[10px] text-red-500 font-bold mt-1 bg-red-50 px-2 py-0.5 rounded border border-red-100">
                     موجودی کافی نیست
                 </span>
-            )}
+            ) : isMaxReached ? (
+                <span className="text-[10px] text-orange-500 font-bold mt-1 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
+                    حداکثر موجودی انتخاب شد
+                </span>
+            ) : null}
         </div>
     );
 };
