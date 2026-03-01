@@ -107,8 +107,14 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
         const lastItem = lastInvoice.items.find(it => it.id === item.id);
         if (!lastItem) return null;
 
+        const basePrice = lastItem.finalPrice ?? lastItem.salePrice;
+        const config = storeSettings.currencyConfigs[lastInvoice.currency];
+        const transactionalPrice = lastInvoice.currency === storeSettings.baseCurrency 
+            ? basePrice 
+            : (config?.method === 'multiply' ? basePrice * (lastInvoice.exchangeRate || 1) : basePrice / (lastInvoice.exchangeRate || 1));
+
         return {
-            price: lastItem.finalPrice ?? lastItem.salePrice,
+            price: transactionalPrice,
             date: lastInvoice.timestamp,
             currency: lastInvoice.currency
         };
@@ -156,7 +162,7 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
                                     <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md w-fit border border-amber-100">
                                         <HistoryIcon className="w-3 h-3" />
                                         <span>آخرین فروش ({new Date(lastSaleToCustomer.date).toLocaleDateString('fa-IR')}):</span>
-                                        <span>{lastSaleToCustomer.price.toLocaleString()} {storeSettings.currencyConfigs[lastSaleToCustomer.currency]?.name || lastSaleToCustomer.currency}</span>
+                                        <span>{lastSaleToCustomer.price.toLocaleString(undefined, {maximumFractionDigits: 3})} {storeSettings.currencyConfigs[lastSaleToCustomer.currency]?.name || lastSaleToCustomer.currency}</span>
                                     </div>
                                 )}
                             </div>

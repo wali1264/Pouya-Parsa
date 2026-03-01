@@ -359,7 +359,7 @@ const CartSide: React.FC<any> = ({
                         <label htmlFor="customer-select" className="text-md font-semibold text-slate-700">مشتری (برای فروش نسیه)</label>
                         {selectedCustomer && (
                             <span className={`text-xs font-bold ${isOverLimit ? 'text-orange-600 animate-pulse' : 'text-slate-400'}`}>
-                                {isOverLimit ? '⚠️ سقف اعتبار رد شده' : `تراز: ${Math.round(selectedCustomer.balance).toLocaleString()} ${baseCurrencyName}`}
+                                {isOverLimit ? '⚠️ سقف اعتبار رد شده' : `تراز: ${selectedCustomer.balance > 0 ? `(${selectedCustomer.balance.toLocaleString(undefined, {maximumFractionDigits: 3})})` : selectedCustomer.balance.toLocaleString(undefined, {maximumFractionDigits: 3})} ${baseCurrencyName}`}
                             </span>
                         )}
                     </div>
@@ -367,7 +367,7 @@ const CartSide: React.FC<any> = ({
                         <option value="">فروش نقدی</option>
                         {customers.map((c: Customer) => (
                             <option key={c.id} value={c.id} className={c.balance > (c.creditLimit || Infinity) ? 'text-orange-600' : ''}>
-                                {c.name} {c.balance > 0 ? `(${Math.round(c.balance).toLocaleString()})` : ''}
+                                {c.name} {c.balance > 0 ? `(${c.balance.toLocaleString(undefined, {maximumFractionDigits: 3})})` : (c.balance < 0 ? `+${Math.abs(c.balance).toLocaleString(undefined, {maximumFractionDigits: 3})}` : '')}
                             </option>
                         ))}
                     </select>

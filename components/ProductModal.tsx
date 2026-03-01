@@ -354,7 +354,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                        <div>
                             <div className="flex justify-between items-center mb-2">
-                                <label className="block text-md font-semibold text-slate-700">قیمت خرید ({purchaseCurrency})</label>
+                                <label className="block text-md font-semibold text-slate-700">قیمت خرید ({storeSettings.currencyConfigs[purchaseCurrency]?.name || purchaseCurrency})</label>
                                 <div className="flex gap-1.5 bg-slate-100 p-0.5 rounded-lg border">
                                     {(['AFN', 'USD', 'IRT'] as const).map(cur => (
                                         <button 
@@ -367,7 +367,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onSave })
                                             className={`px-2 py-0.5 text-[10px] font-black rounded ${purchaseCurrency === cur ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
                                             disabled={!!product}
                                         >
-                                            {cur}
+                                            {storeSettings.currencyConfigs[cur]?.name || cur}
                                         </button>
                                     ))}
                                 </div>
