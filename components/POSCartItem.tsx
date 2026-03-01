@@ -183,6 +183,7 @@ const POSCartItem: React.FC<POSCartItemProps> = ({
                                 totalUnits={item.quantity}
                                 itemsPerPackage={(item as InvoiceItem).itemsPerPackage || 1}
                                 onChange={onQuantityChange}
+                                maxUnits={(item as InvoiceItem).batches?.reduce((sum, b) => sum + b.stock, 0) || 0}
                             />
                        ) : (
                             <PackageUnitInput 

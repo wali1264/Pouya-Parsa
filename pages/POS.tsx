@@ -6,7 +6,7 @@ import Toast from '../components/Toast';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import FloatingGallery from '../components/FloatingGallery';
 import * as db from '../utils/db';
-import { formatCurrency, toEnglishDigits, formatBalance } from '../utils/formatters';
+import { formatCurrency, toEnglishDigits, formatBalance, parseToPackageAndUnits } from '../utils/formatters';
 import DateRangeFilter from '../components/DateRangeFilter';
 import POSCartItem from '../components/POSCartItem';
 import PackageUnitInput from '../components/PackageUnitInput';
@@ -118,7 +118,20 @@ const ProductSide: React.FC<{
                                 onClick={() => handleDropdownItemClick(product)}
                                 className="p-3 md:p-4 flex justify-between items-center hover:bg-blue-100/50 cursor-pointer border-b border-gray-200/60 last:border-b-0"
                             >
-                                <span className="font-semibold text-slate-800 text-sm md:text-lg">{product.name}</span>
+                                <div className="flex flex-col">
+                                    <span className="font-semibold text-slate-800 text-sm md:text-lg">{product.name}</span>
+                                    <span className="text-xs text-slate-500 mt-0.5">
+                                        {(() => {
+                                            const totalStock = product.batches?.reduce((sum, b) => sum + b.stock, 0) || 0;
+                                            const itemsPerPkg = product.itemsPerPackage || 1;
+                                            if (itemsPerPkg > 1) {
+                                                const { packages, units } = parseToPackageAndUnits(totalStock, itemsPerPkg);
+                                                return `موجودی: ${packages} ${storeSettings.packageLabel || 'بسته'}${units > 0 ? ` و ${units} ${storeSettings.unitLabel || 'عدد'}` : ''}`;
+                                            }
+                                            return `موجودی: ${totalStock} ${storeSettings.unitLabel || 'عدد'}`;
+                                        })()}
+                                    </span>
+                                </div>
                                 <span className="text-blue-600 font-bold text-sm md:text-base">{formatCurrency(product.salePrice, storeSettings, undefined, currency, Number(exchangeRate))}</span>
                             </li>
                         ))}

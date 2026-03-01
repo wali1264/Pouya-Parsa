@@ -383,8 +383,8 @@ const Reports: React.FC = () => {
                 return (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <SmartStatCard title="فروش خالص (AFN)" value={formatCurrency(salesData.netSales, storeSettings)} color="text-blue-600" icon={<POSIcon/>}/>
-                            <SmartStatCard title="سود خالص (AFN)" value={formatCurrency(salesData.netIncome, storeSettings)} color="text-green-600" icon={<DashboardIcon/>}/>
+                            <SmartStatCard title={`فروش خالص (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(salesData.netSales, storeSettings)} color="text-blue-600" icon={<POSIcon/>}/>
+                            <SmartStatCard title={`سود خالص (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(salesData.netIncome, storeSettings)} color="text-green-600" icon={<DashboardIcon/>}/>
                             <SmartStatCard title="هزینه‌ها" value={formatCurrency(salesData.totalExpenses, storeSettings)} color="text-red-500" icon={<WarningIcon/>}/>
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -395,7 +395,7 @@ const Reports: React.FC = () => {
                                         <div key={p.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl hover:bg-blue-50 transition-colors">
                                             <span className="font-bold text-slate-700 text-sm md:text-base">{p.name}</span>
                                             <div className="text-left">
-                                                <p className="font-black text-blue-600 text-sm">{p.totalValue.toLocaleString()} {storeSettings.currencySymbol}</p>
+                                                <p className="font-black text-blue-600 text-sm">{formatCurrency(p.totalValue, storeSettings)}</p>
                                                 <p className="text-[10px] text-slate-400 font-bold">{p.quantity} عدد فروخته شده</p>
                                             </div>
                                         </div>

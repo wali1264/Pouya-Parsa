@@ -239,7 +239,7 @@ const SecurityDeposits: React.FC = () => {
                                         </div>
                                         <div className="flex justify-between items-end">
                                             <div className="text-right">
-                                                <p className="font-black text-indigo-800 text-base" dir="ltr">{t.amount.toLocaleString()} {t.currency}</p>
+                                                <p className="font-black text-indigo-800 text-base" dir="ltr">{t.amount.toLocaleString(undefined, {maximumFractionDigits: 3})} {storeSettings.currencyConfigs[t.currency as 'AFN'|'USD'|'IRT']?.name || t.currency}</p>
                                                 {t.description && <p className="text-[10px] text-slate-400 mt-1 italic line-clamp-1">{t.description}</p>}
                                             </div>
                                             <span className="text-[9px] text-slate-300 font-bold">{new Date(t.date).toLocaleDateString('fa-IR')}</span>
