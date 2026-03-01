@@ -160,9 +160,9 @@ const SecurityDeposits: React.FC = () => {
                                             </td>
                                             <td className="p-4">
                                                 <div className="flex justify-center gap-4 text-xs font-black" dir="ltr">
-                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceAFN.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> AFN</div>
-                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceUSD.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> $</div>
-                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceIRT.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> IRT</div>
+                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceAFN.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> {storeSettings.currencyConfigs['AFN']?.name || 'AFN'}</div>
+                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceUSD.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> {storeSettings.currencyConfigs['USD']?.name || 'USD'}</div>
+                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceIRT.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> {storeSettings.currencyConfigs['IRT']?.name || 'IRT'}</div>
                                                 </div>
                                             </td>
                                             <td className="p-4">
@@ -198,15 +198,15 @@ const SecurityDeposits: React.FC = () => {
                                     </div>
                                     <div className="grid grid-cols-3 gap-2 mb-4">
                                         <div className="text-center p-2 bg-slate-50 rounded-xl border">
-                                            <p className="text-[8px] font-black text-slate-400 uppercase">AFN</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase">{storeSettings.currencyConfigs['AFN']?.name || 'AFN'}</p>
                                             <p className="font-black text-indigo-700">{h.balanceAFN.toLocaleString(undefined, {maximumFractionDigits: 3})}</p>
                                         </div>
                                         <div className="text-center p-2 bg-slate-50 rounded-xl border">
-                                            <p className="text-[8px] font-black text-slate-400 uppercase">USD</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase">{storeSettings.currencyConfigs['USD']?.name || 'USD'}</p>
                                             <p className="font-black text-indigo-700">{h.balanceUSD.toLocaleString(undefined, {maximumFractionDigits: 3})}</p>
                                         </div>
                                         <div className="text-center p-2 bg-slate-50 rounded-xl border">
-                                            <p className="text-[8px] font-black text-slate-400 uppercase">IRT</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase">{storeSettings.currencyConfigs['IRT']?.name || 'IRT'}</p>
                                             <p className="font-black text-indigo-700">{h.balanceIRT.toLocaleString(undefined, {maximumFractionDigits: 3})}</p>
                                         </div>
                                     </div>
@@ -295,7 +295,7 @@ const SecurityDeposits: React.FC = () => {
                                             className="hidden peer" 
                                             disabled={isProcessing} 
                                         />
-                                        <div className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-black text-indigo-400 peer-checked:bg-indigo-600 peer-checked:text-white peer-checked:border-indigo-600 transition-all">{c}</div>
+                                        <div className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-black text-indigo-400 peer-checked:bg-indigo-600 peer-checked:text-white peer-checked:border-indigo-600 transition-all">{storeSettings.currencyConfigs[c as 'AFN'|'USD'|'IRT']?.name || c}</div>
                                     </label>
                                 ))}
                             </div>

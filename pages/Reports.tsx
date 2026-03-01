@@ -427,8 +427,8 @@ const Reports: React.FC = () => {
                                     <tr>
                                         <th className="p-4 text-right pr-8">نام محصول</th>
                                         <th className="p-4">موجودی</th>
-                                        <th className="p-4">ارزش دفتری (AFN)</th>
-                                        <th className="p-4">ارزش روز (AFN)</th>
+                                        <th className="p-4">ارزش دفتری ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})</th>
+                                        <th className="p-4">ارزش روز ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})</th>
                                         <th className="p-4">سود ناخالص واحد</th>
                                     </tr>
                                 </thead>
@@ -457,7 +457,7 @@ const Reports: React.FC = () => {
                 return (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <SmartStatCard title="سرمایه در جاده (AFN)" value={formatCurrency(supplyChainData.totalValueBase, storeSettings)} color="text-blue-700" icon={<TruckIcon/>}/>
+                            <SmartStatCard title={`سرمایه در جاده (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(supplyChainData.totalValueBase, storeSettings)} color="text-blue-700" icon={<TruckIcon/>}/>
                             <SmartStatCard title="مجموع پیش‌پرداخت‌ها" value={formatCurrency(supplyChainData.totalPrepaymentsBase, storeSettings)} color="text-emerald-600" icon={<AccountingIcon/>}/>
                             <SmartStatCard title="سفارشات معوق" value={`${supplyChainData.orderCount} مورد`} color="text-slate-500" />
                         </div>
@@ -474,9 +474,9 @@ const Reports: React.FC = () => {
                 return (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <SmartStatCard title="کل امانات (افغانی)" value={depositHolders.reduce((s,h)=>s+h.balanceAFN, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-indigo-600" icon={<SafeIcon/>}/>
-                            <SmartStatCard title="کل امانات (دلار)" value={depositHolders.reduce((s,h)=>s+h.balanceUSD, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-emerald-600" icon={<SafeIcon/>}/>
-                            <SmartStatCard title="کل امانات (تومان)" value={depositHolders.reduce((s,h)=>s+h.balanceIRT, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-orange-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title={`کل امانات (${storeSettings.currencyConfigs['AFN']?.name || 'AFN'})`} value={depositHolders.reduce((s,h)=>s+h.balanceAFN, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-indigo-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title={`کل امانات (${storeSettings.currencyConfigs['USD']?.name || 'USD'})`} value={depositHolders.reduce((s,h)=>s+h.balanceUSD, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-emerald-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title={`کل امانات (${storeSettings.currencyConfigs['IRT']?.name || 'IRT'})`} value={depositHolders.reduce((s,h)=>s+h.balanceIRT, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-orange-600" icon={<SafeIcon/>}/>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <SmartStatCard title="مجموع طلب از امانت‌گذاران (بسان‌کاری)" value={formatCurrency(financialPositionData.netDepositAsset, storeSettings)} color="text-blue-600" icon={<ReportsIcon/>}/>
@@ -497,15 +497,15 @@ const Reports: React.FC = () => {
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="space-y-4">
                                 <h3 className="font-black text-green-700 flex items-center gap-2 px-1"><div className="w-2 h-2 rounded-full bg-green-500"></div> دارایی‌ها</h3>
-                                <SmartStatCard title="موجودی انبار (AFN)" value={formatCurrency(financialPositionData.inventoryValue, storeSettings)} color="text-slate-800" />
+                                <SmartStatCard title={`موجودی انبار (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(financialPositionData.inventoryValue, storeSettings)} color="text-slate-800" />
                                 <SmartStatCard title="موجودی نقد (تخمینی)" value={formatCurrency(financialPositionData.cashInHand, storeSettings)} color="text-blue-700" icon={<SafeIcon />} />
-                                <SmartStatCard title="طلب از مشتریان (AFN)" value={formatCurrency(financialPositionData.customerReceivables, storeSettings)} color="text-slate-800" />
+                                <SmartStatCard title={`طلب از مشتریان (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(financialPositionData.customerReceivables, storeSettings)} color="text-slate-800" />
                                 <SmartStatCard title="بسان‌کاری (طلب از امانات)" value={formatCurrency(financialPositionData.netDepositAsset, storeSettings)} color="text-blue-600" />
                                 <SmartStatCard title="کالای نرسیده (Deferred)" value={formatCurrency(financialPositionData.deferredAssets, storeSettings)} color="text-blue-600" />
                             </div>
                             <div className="space-y-4">
                                 <h3 className="font-black text-red-700 flex items-center gap-2 px-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> بدهی‌ها</h3>
-                                <SmartStatCard title="بدهی به تأمین‌کننده (AFN)" value={formatCurrency(financialPositionData.supplierPayables, storeSettings)} color="text-red-600" />
+                                <SmartStatCard title={`بدهی به تأمین‌کننده (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(financialPositionData.supplierPayables, storeSettings)} color="text-red-600" />
                                 {financialPositionData.netDepositLiability > 0 && (
                                     <SmartStatCard title="موجودی امانی (بدهی جاری)" value={formatCurrency(financialPositionData.netDepositLiability, storeSettings)} color="text-indigo-600" />
                                 )}
@@ -642,10 +642,10 @@ const Reports: React.FC = () => {
                                             <tr>
                                                 <th className="p-4 text-xs font-black">تاریخ</th>
                                                 <th className="p-4 text-xs font-black">{statsType === 'purchases' ? 'تأمین‌کننده' : 'مشتری'}</th>
-                                                <th className="p-4 text-xs font-black">قیمت معامله (AFN)</th>
+                                                <th className="p-4 text-xs font-black">قیمت معامله ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})</th>
                                                 <th className="p-4 text-xs font-black">تعداد</th>
-                                                {statsType === 'sales' && <th className="p-4 text-xs font-black">سود این ردیف (AFN)</th>}
-                                                <th className="p-4 text-xs font-black">ارزش کل (AFN)</th>
+                                                {statsType === 'sales' && <th className="p-4 text-xs font-black">سود این ردیف ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})</th>}
+                                                <th className="p-4 text-xs font-black">ارزش کل ({storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})</th>
                                             </tr>
                                         </thead>
                                         <tbody>

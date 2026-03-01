@@ -158,18 +158,24 @@ const Dashboard: React.FC = () => {
 
         const sales = todayInvoices.filter(inv => inv.type === 'sale').reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
         const returns = todayInvoices.filter(inv => inv.type === 'return').reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
+
         const creditInvoices = todayInvoices.filter(inv => inv.customerId && inv.type === 'sale');
         const creditSales = creditInvoices.reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
-        
+        const creditReturns = todayInvoices.filter(inv => inv.customerId && inv.type === 'return').reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
+
         const supplierIntermediaryInvoices = todayInvoices.filter(inv => inv.supplierIntermediaryId && inv.type === 'sale');
         const supplierIntermediarySales = supplierIntermediaryInvoices.reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
+        const supplierIntermediaryReturns = todayInvoices.filter(inv => inv.supplierIntermediaryId && inv.type === 'return').reduce((sum, inv) => sum + (inv.totalAmountAFN || inv.totalAmount), 0);
 
-        const cashSales = sales - creditSales - supplierIntermediarySales - returns;
+        const netSales = sales - returns;
+        const netCreditSales = creditSales - creditReturns;
+        const netSupplierSales = supplierIntermediarySales - supplierIntermediaryReturns;
+        const netCashSales = netSales - netCreditSales - netSupplierSales;
             
         return { 
-            totalSalesToday: sales - returns, 
-            totalCashSalesToday: cashSales,
-            totalCreditSalesToday: creditSales,
+            totalSalesToday: netSales, 
+            totalCashSalesToday: netCashSales,
+            totalCreditSalesToday: netCreditSales,
             todayCreditInvoices: creditInvoices.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         };
     }, [saleInvoices]);
@@ -378,21 +384,21 @@ const Dashboard: React.FC = () => {
         <StatCard 
             title="فروش نقدی امروز" 
             value={totalCashSalesToday.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} 
-            description={storeSettings.currencyName} 
+            description={storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency} 
             color="text-emerald-600" 
             icon={<POSIcon className="w-7 h-7 text-emerald-600" />}
         />
         <StatCard 
             title="مجموع فروش امروز (خالص)" 
             value={totalSalesToday.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} 
-            description={storeSettings.currencyName} 
+            description={storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency} 
             color="text-blue-600" 
             icon={<POSIcon className="w-7 h-7 text-blue-600" />}
         />
         <StatCard 
             title="فروش نسیه امروز" 
             value={totalCreditSalesToday.toLocaleString('fa-IR', { maximumFractionDigits: 3 })} 
-            description={storeSettings.currencyName} 
+            description={storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency} 
             color="text-orange-600" 
             icon={<UserGroupIcon className="w-7 h-7 text-orange-600" />}
             onDetailClick={() => setIsCreditDetailsOpen(true)}

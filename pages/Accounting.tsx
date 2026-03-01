@@ -195,7 +195,7 @@ const SuppliersTab = () => {
                             <div className="flex gap-4">
                                 {['AFN', 'USD', 'IRT'].map(cur => (
                                     <label key={cur} className="flex items-center gap-2 cursor-pointer group">
-                                        <input type="radio" checked={addSupplierCurrency === cur} onChange={() => {setAddSupplierCurrency(cur as any); setAddSupplierRate('');}} className="w-4 h-4 text-blue-600" /><span className="text-sm font-semibold text-slate-700">{cur}</span>
+                                        <input type="radio" checked={addSupplierCurrency === cur} onChange={() => {setAddSupplierCurrency(cur as any); setAddSupplierRate('');}} className="w-4 h-4 text-blue-600" /><span className="text-sm font-semibold text-slate-700">{storeSettings.currencyConfigs[cur as 'AFN'|'USD'|'IRT']?.name || cur}</span>
                                     </label>
                                 ))}
                             </div>
@@ -219,7 +219,7 @@ const SuppliersTab = () => {
                         <div className="flex gap-4 p-3 bg-blue-50 rounded-xl">
                             {['AFN', 'USD', 'IRT'].map(c => (
                                 <label key={c} className="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" checked={paymentCurrency === c} onChange={() => {setPaymentCurrency(c as any); setExchangeRate('');}} className="text-blue-600" /><span className="text-xs font-bold">{c}</span>
+                                    <input type="radio" checked={paymentCurrency === c} onChange={() => {setPaymentCurrency(c as any); setExchangeRate('');}} className="text-blue-600" /><span className="text-xs font-bold">{storeSettings.currencyConfigs[c as 'AFN'|'USD'|'IRT']?.name || c}</span>
                                 </label>
                             ))}
                         </div>
@@ -348,7 +348,7 @@ const PayrollTab = () => {
                                     <form onSubmit={(ev) => handleAddAdvanceForm(ev, e.id)} className="flex flex-col gap-2 w-full max-w-sm mx-auto">
                                         <div className="flex gap-2">
                                             <select value={advanceCurrency} onChange={(e) => setAdvanceCurrency(e.target.value as any)} className="p-2 border border-slate-200 rounded-xl text-xs font-bold bg-white">
-                                                {['AFN', 'USD', 'IRT'].map(c => <option key={c} value={c}>{c}</option>)}
+                                                {['AFN', 'USD', 'IRT'].map(c => <option key={c} value={c}>{storeSettings.currencyConfigs[c as 'AFN'|'USD'|'IRT']?.name || c}</option>)}
                                             </select>
                                             <input type="text" inputMode="decimal" name="amount" value={advanceAmount} onChange={(e) => setAdvanceAmount(toEnglishDigits(e.target.value).replace(/[^0-9.]/g, ''))} className="flex-grow p-2 border border-slate-200 rounded-xl text-center font-bold focus:ring-2 focus:ring-amber-500 outline-none" placeholder="مبلغ" required />
                                         </div>
