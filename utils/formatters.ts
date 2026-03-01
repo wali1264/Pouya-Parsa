@@ -59,6 +59,14 @@ export const formatCurrency = (amount: number, settings: StoreSettings, customCu
     return `${formatted} ${currencyName}`;
 };
 
+export const formatBalance = (amount: number): string => {
+    const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+    if (safeAmount > 0) {
+        return `(${safeAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })})`;
+    }
+    return Math.abs(safeAmount).toLocaleString(undefined, { maximumFractionDigits: 3 });
+};
+
 export const numberToPersianWords = (num: number): string => {
     if (num === 0) return 'صفر';
 

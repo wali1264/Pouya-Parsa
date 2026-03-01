@@ -442,8 +442,8 @@ const Reports: React.FC = () => {
                                             <tr key={p.id} className="border-t">
                                                 <td className="p-4 font-bold text-slate-700 text-right pr-8">{p.name}</td>
                                                 <td className="p-4 font-mono font-bold">{stock}</td>
-                                                <td className="p-4 font-mono">{Math.round(bookVal).toLocaleString()}</td>
-                                                <td className="p-4 font-mono text-blue-600 font-bold">{Math.round(saleVal).toLocaleString()}</td>
+                                                <td className="p-4 font-mono">{bookVal.toLocaleString(undefined, {maximumFractionDigits: 3})}</td>
+                                                <td className="p-4 font-mono text-blue-600 font-bold">{saleVal.toLocaleString(undefined, {maximumFractionDigits: 3})}</td>
                                                 <td className="p-4 text-emerald-600 font-black" dir="ltr">{(p.salePrice - avgPurc).toLocaleString(undefined, {maximumFractionDigits:1})}</td>
                                             </tr>
                                         )
@@ -474,9 +474,9 @@ const Reports: React.FC = () => {
                 return (
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <SmartStatCard title="کل امانات (افغانی)" value={Math.round(depositHolders.reduce((s,h)=>s+h.balanceAFN, 0)).toLocaleString()} color="text-indigo-600" icon={<SafeIcon/>}/>
-                            <SmartStatCard title="کل امانات (دلار)" value={depositHolders.reduce((s,h)=>s+h.balanceUSD, 0).toLocaleString()} color="text-emerald-600" icon={<SafeIcon/>}/>
-                            <SmartStatCard title="کل امانات (تومان)" value={depositHolders.reduce((s,h)=>s+h.balanceIRT, 0).toLocaleString()} color="text-orange-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title="کل امانات (افغانی)" value={depositHolders.reduce((s,h)=>s+h.balanceAFN, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-indigo-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title="کل امانات (دلار)" value={depositHolders.reduce((s,h)=>s+h.balanceUSD, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-emerald-600" icon={<SafeIcon/>}/>
+                            <SmartStatCard title="کل امانات (تومان)" value={depositHolders.reduce((s,h)=>s+h.balanceIRT, 0).toLocaleString(undefined, {maximumFractionDigits: 3})} color="text-orange-600" icon={<SafeIcon/>}/>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <SmartStatCard title="مجموع طلب از امانت‌گذاران (بسان‌کاری)" value={formatCurrency(financialPositionData.netDepositAsset, storeSettings)} color="text-blue-600" icon={<ReportsIcon/>}/>
@@ -624,9 +624,9 @@ const Reports: React.FC = () => {
                                             {aggregatedItemStats.map(item => (
                                                 <tr key={item.id} className="border-b last:border-0 hover:bg-blue-50 transition-colors group">
                                                     <td className="p-5 text-right pr-10 font-bold text-slate-800 text-lg group-hover:text-blue-700">{item.name}</td>
-                                                    <td className="p-5 font-mono text-slate-600" dir="ltr">{Math.round(item.totalValue / item.quantity).toLocaleString()}</td>
+                                                    <td className="p-5 font-mono text-slate-600" dir="ltr">{(item.totalValue / item.quantity).toLocaleString(undefined, {maximumFractionDigits: 3})}</td>
                                                     <td className="p-5 font-black text-slate-700">{formatStockToPackagesAndUnits(item.quantity, storeSettings, item.itemsPerPackage)}</td>
-                                                    <td className="p-5 font-black text-blue-600 text-lg" dir="ltr">{Math.round(item.totalValue).toLocaleString()}</td>
+                                                    <td className="p-5 font-black text-blue-600 text-lg" dir="ltr">{item.totalValue.toLocaleString(undefined, {maximumFractionDigits: 3})}</td>
                                                 </tr>
                                             ))}
                                             {aggregatedItemStats.length === 0 && (
@@ -661,8 +661,8 @@ const Reports: React.FC = () => {
                                                         return priceBase.toLocaleString();
                                                     })()}</td>
                                                     <td className="p-4 font-bold text-slate-600">{formatStockToPackagesAndUnits(tx.quantity, storeSettings, (products.find(p=>p.id===selectedProductId)?.itemsPerPackage || 1))}</td>
-                                                    {statsType === 'sales' && <td className="p-4 font-black text-emerald-600" dir="ltr">{Math.round(tx.profitBase).toLocaleString()}</td>}
-                                                    <td className="p-4 font-black text-blue-600" dir="ltr">{Math.round(tx.totalBase ?? tx.totalSaleBase).toLocaleString()}</td>
+                                                    {statsType === 'sales' && <td className="p-4 font-black text-emerald-600" dir="ltr">{tx.profitBase.toLocaleString(undefined, {maximumFractionDigits: 3})}</td>}
+                                                    <td className="p-4 font-black text-blue-600" dir="ltr">{(tx.totalBase ?? tx.totalSaleBase).toLocaleString(undefined, {maximumFractionDigits: 3})}</td>
                                                 </tr>
                                             ))}
                                             {detailedProductStats.length === 0 && (
@@ -683,11 +683,11 @@ const Reports: React.FC = () => {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">میانگین فی</p>
-                                                <p className="font-bold text-slate-600 text-sm" dir="ltr">{Math.round(item.totalValue / item.quantity).toLocaleString()} {storeSettings.baseCurrency}</p>
+                                                <p className="font-bold text-slate-600 text-sm" dir="ltr">{(item.totalValue / item.quantity).toLocaleString(undefined, {maximumFractionDigits: 3})} {storeSettings.baseCurrency}</p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">ارزش کل</p>
-                                                <p className="font-black text-blue-600" dir="ltr">{Math.round(item.totalValue).toLocaleString()} {storeSettings.baseCurrency}</p>
+                                                <p className="font-black text-blue-600" dir="ltr">{item.totalValue.toLocaleString(undefined, {maximumFractionDigits: 3})} {storeSettings.baseCurrency}</p>
                                             </div>
                                             <div className="col-span-2 bg-slate-50 p-2 rounded-xl border border-slate-100 mt-2">
                                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">مقدار کل معامله شده</p>

@@ -160,9 +160,9 @@ const SecurityDeposits: React.FC = () => {
                                             </td>
                                             <td className="p-4">
                                                 <div className="flex justify-center gap-4 text-xs font-black" dir="ltr">
-                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{Math.round(h.balanceAFN).toLocaleString()}</span> AFN</div>
-                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceUSD.toLocaleString()}</span> $</div>
-                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceIRT.toLocaleString()}</span> IRT</div>
+                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceAFN.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> AFN</div>
+                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceUSD.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> $</div>
+                                                    <div className="bg-white px-2 py-1 rounded-lg border border-indigo-100"><span className="text-indigo-600">{h.balanceIRT.toLocaleString(undefined, {maximumFractionDigits: 3})}</span> IRT</div>
                                                 </div>
                                             </td>
                                             <td className="p-4">
@@ -199,15 +199,15 @@ const SecurityDeposits: React.FC = () => {
                                     <div className="grid grid-cols-3 gap-2 mb-4">
                                         <div className="text-center p-2 bg-slate-50 rounded-xl border">
                                             <p className="text-[8px] font-black text-slate-400 uppercase">AFN</p>
-                                            <p className="font-black text-indigo-700">{Math.round(h.balanceAFN).toLocaleString()}</p>
+                                            <p className="font-black text-indigo-700">{h.balanceAFN.toLocaleString(undefined, {maximumFractionDigits: 3})}</p>
                                         </div>
                                         <div className="text-center p-2 bg-slate-50 rounded-xl border">
                                             <p className="text-[8px] font-black text-slate-400 uppercase">USD</p>
-                                            <p className="font-black text-indigo-700">{h.balanceUSD.toLocaleString()}</p>
+                                            <p className="font-black text-indigo-700">{h.balanceUSD.toLocaleString(undefined, {maximumFractionDigits: 3})}</p>
                                         </div>
                                         <div className="text-center p-2 bg-slate-50 rounded-xl border">
                                             <p className="text-[8px] font-black text-slate-400 uppercase">IRT</p>
-                                            <p className="font-black text-indigo-700">{h.balanceIRT.toLocaleString()}</p>
+                                            <p className="font-black text-indigo-700">{h.balanceIRT.toLocaleString(undefined, {maximumFractionDigits: 3})}</p>
                                         </div>
                                     </div>
                                     <div className="flex gap-2 pt-3 border-t border-dashed">

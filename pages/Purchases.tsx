@@ -276,7 +276,7 @@ const Purchases: React.FC = () => {
     };
 
     const totalAmount = useMemo(() => {
-        return Math.round(items.reduce((total, item) => total + (Number(item.purchasePrice || 0) * Number(item.quantity || 0)), 0));
+        return items.reduce((total, item) => total + (Number(item.purchasePrice || 0) * Number(item.quantity || 0)), 0);
     }, [items]);
 
     const filteredProducts = useMemo(() => {

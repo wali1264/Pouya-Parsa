@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { Supplier, Customer, Employee, AnyTransaction, PayrollTransaction } from '../types';
 import { XIcon, PrintIcon } from './icons';
 import { useAppContext } from '../AppContext';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatBalance } from '../utils/formatters';
 import DateRangeFilter from './DateRangeFilter';
 import ReportPrintPreviewModal from './ReportPrintPreviewModal';
 
@@ -138,15 +138,15 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({ perso
                                 <div className="flex gap-2 md:gap-3 mt-1 flex-wrap">
                                     <div className="bg-white border px-3 py-1 rounded-xl shadow-sm">
                                         <span className="text-[10px] font-black text-slate-400 block uppercase">افغانی</span>
-                                        <span dir="ltr" className={`font-black ${balances.afn > 0 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(balances.afn).toLocaleString()}</span>
+                                        <span dir="ltr" className={`font-black ${balances.afn > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatBalance(balances.afn)}</span>
                                     </div>
                                     <div className="bg-white border px-3 py-1 rounded-xl shadow-sm">
                                         <span className="text-[10px] font-black text-slate-400 block uppercase">دلار</span>
-                                        <span dir="ltr" className={`font-black ${balances.usd > 0 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(balances.usd).toLocaleString()}</span>
+                                        <span dir="ltr" className={`font-black ${balances.usd > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatBalance(balances.usd)}</span>
                                     </div>
                                     <div className="bg-white border px-3 py-1 rounded-xl shadow-sm">
                                         <span className="text-[10px] font-black text-slate-400 block uppercase">تومان</span>
-                                        <span dir="ltr" className={`font-black ${balances.irt > 0 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(balances.irt).toLocaleString()}</span>
+                                        <span dir="ltr" className={`font-black ${balances.irt > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatBalance(balances.irt)}</span>
                                     </div>
                                 </div>
                             ) : (
@@ -194,9 +194,9 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({ perso
                      <div className="mt-6 pt-4 border-t text-left font-bold text-xl">
                         {type !== 'employee' && balances ? (
                             <div className="flex flex-col gap-2">
-                                <div>مانده افغانی: <span dir="ltr">{Math.round(balances.afn).toLocaleString()} AFN</span></div>
-                                <div>مانده دلار: <span dir="ltr">{Math.round(balances.usd).toLocaleString()} $</span></div>
-                                <div>مانده تومان: <span dir="ltr">{Math.round(balances.irt).toLocaleString()} IRT</span></div>
+                                <div>مانده افغانی: <span dir="ltr">{formatBalance(balances.afn)} AFN</span></div>
+                                <div>مانده دلار: <span dir="ltr">{formatBalance(balances.usd)} $</span></div>
+                                <div>مانده تومان: <span dir="ltr">{formatBalance(balances.irt)} IRT</span></div>
                             </div>
                         ) : (
                             <>موجودی نهایی: {formatCurrency(person.balance, storeSettings)}</>

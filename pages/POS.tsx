@@ -6,7 +6,7 @@ import Toast from '../components/Toast';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import FloatingGallery from '../components/FloatingGallery';
 import * as db from '../utils/db';
-import { formatCurrency, toEnglishDigits } from '../utils/formatters';
+import { formatCurrency, toEnglishDigits, formatBalance } from '../utils/formatters';
 import DateRangeFilter from '../components/DateRangeFilter';
 import POSCartItem from '../components/POSCartItem';
 import PackageUnitInput from '../components/PackageUnitInput';
@@ -176,7 +176,7 @@ const ProductSide: React.FC<{
                             {convertedTotal < 1 ? convertedTotal.toFixed(4) : convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} {currency === 'USD' ? '$' : (currency === 'IRT' ? 'تومان' : storeSettings.currencyConfigs[currency]?.name || currency)}
                         </p>
                         {currency !== baseCurrency && (
-                            <p className="text-[8px] text-blue-200 font-bold">معادل: {Math.round(cartTotalBase).toLocaleString()} {baseCurrencyName}</p>
+                            <p className="text-[8px] text-blue-200 font-bold">معادل: {cartTotalBase.toLocaleString(undefined, {maximumFractionDigits: 3})} {baseCurrencyName}</p>
                         )}
                     </div>
                 </div>
@@ -948,7 +948,7 @@ const POS: React.FC = () => {
                         <div className="flex flex-col justify-center w-2/5">
                             <span className="text-[10px] text-slate-500 font-bold">مبلغ کل ({currency})</span>
                             <span className="text-lg font-extrabold text-blue-700 truncate">
-                                {(currency === baseCurrency ? totalAmountBase : (currency === 'IRT' ? Math.round(totalAmountBase * (Number(exchangeRate)||1)) : totalAmountBase / (Number(exchangeRate)||1))).toLocaleString()}
+                                {(currency === baseCurrency ? totalAmountBase : (currency === 'IRT' ? (totalAmountBase * (Number(exchangeRate)||1)) : totalAmountBase / (Number(exchangeRate)||1))).toLocaleString(undefined, {maximumFractionDigits: 3})}
                             </span>
                         </div>
                         <div className="flex items-center gap-2 w-3/5 justify-end">
@@ -1040,7 +1040,7 @@ const POS: React.FC = () => {
                                         {isExceeded && <WarningIcon className="w-5 h-5 text-orange-500 animate-bounce" />}
                                     </div>
                                     <div className="flex justify-between items-center mt-2 pr-7">
-                                        <span className="text-[10px] font-bold text-slate-400">تراز کل: {Math.round(c.balance).toLocaleString()} {baseCurrencyName}</span>
+                                        <span className="text-[10px] font-bold text-slate-400">تراز کل: {formatBalance(c.balance)} {baseCurrencyName}</span>
                                         {isExceeded && <span className="text-[10px] font-black text-orange-600 uppercase tracking-tighter">بیش از سقف اعتبار</span>}
                                     </div>
                                 </div>
