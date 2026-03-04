@@ -5,14 +5,14 @@ import DateRangeFilter from '../components/DateRangeFilter';
 import { formatCurrency, formatStockToPackagesAndUnits } from '../utils/formatters';
 import type { Product, SaleInvoice, User, Customer, Supplier, CustomerTransaction, SupplierTransaction, InTransitInvoice, Expense, CartItem, InvoiceItem } from '../types';
 import TransactionHistoryModal from '../components/TransactionHistoryModal';
-import { PrintIcon, WarningIcon, UserGroupIcon, InventoryIcon, AccountingIcon, POSIcon, ReportsIcon, DashboardIcon, TruckIcon, SafeIcon, ChartBarIcon, SearchIcon } from '../components/icons';
+import { PrintIcon, WarningIcon, UserGroupIcon, InventoryIcon, AccountingIcon, POSIcon, ReportsIcon, DashboardIcon, TruckIcon, SafeIcon, ChartBarIcon, SearchIcon, ArchiveBoxXMarkIcon } from '../components/icons';
 import ReportPrintPreviewModal from '../components/ReportPrintPreviewModal';
 
 const Reports: React.FC = () => {
     const { 
         saleInvoices, products, expenses, users, activities, inTransitInvoices,
         customers, suppliers, customerTransactions, supplierTransactions, storeSettings, hasPermission,
-        depositHolders, depositTransactions, purchaseInvoices
+        depositHolders, depositTransactions, purchaseInvoices, wastageRecords
     } = useAppContext();
 
     const [activeTab, setActiveTab] = useState('sales');
@@ -180,14 +180,16 @@ const Reports: React.FC = () => {
         
         // Segregate deposits into assets (when they owe us - Besan-kari) and liabilities (when we owe them - Amanat)
         const depositAssets = depositHolders.reduce((s, h) => {
-            const baseBalance = h.balance || h.balanceAFN; // Fallback for legacy data
+            const baseBalance = h.balance !== undefined ? h.balance : h.balanceAFN; // Fallback for legacy data
             return s + (baseBalance < 0 ? Math.abs(baseBalance) : 0);
         }, 0);
         const depositLiabilities = depositHolders.reduce((s, h) => {
-            const baseBalance = h.balance || h.balanceAFN;
+            const baseBalance = h.balance !== undefined ? h.balance : h.balanceAFN;
             return s + (baseBalance > 0 ? baseBalance : 0);
         }, 0);
         
+        const totalWastage = (wastageRecords || []).reduce((sum, w) => sum + w.totalCost, 0);
+
         const totalAssets = invVal + cashPosition + custRec + depositAssets + deferredAssets;
         const totalLiabilities = suppPay + depositLiabilities;
         const netWorthRaw = totalAssets - totalLiabilities;
@@ -198,6 +200,7 @@ const Reports: React.FC = () => {
             customerReceivables: custRec, 
             supplierPayables: suppPay, 
             deferredAssets,
+            totalWastage,
             totalAssets, 
             netCapital: netWorthRaw,
             netDepositAsset: depositAssets,
@@ -367,6 +370,7 @@ const Reports: React.FC = () => {
         { id: 'accounts', label: 'وصولی‌ها', icon: <UserGroupIcon className="w-5 h-5"/> },
         { id: 'item_stats', label: 'آمار کالاها', icon: <ChartBarIcon className="w-5 h-5"/> },
         { id: 'employees', label: 'فعالیت‌ها', icon: <ReportsIcon className="w-5 h-5"/> },
+        { id: 'wastage', label: 'ضایعات', icon: <ArchiveBoxXMarkIcon className="w-5 h-5"/> },
     ];
 
     const SmartStatCard: React.FC<{ title: string, value: string, color: string, icon?: React.ReactNode }> = ({ title, value, color, icon }) => (
@@ -504,10 +508,13 @@ const Reports: React.FC = () => {
                                 <SmartStatCard title="کالای نرسیده (Deferred)" value={formatCurrency(financialPositionData.deferredAssets, storeSettings)} color="text-blue-600" />
                             </div>
                             <div className="space-y-4">
-                                <h3 className="font-black text-red-700 flex items-center gap-2 px-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> بدهی‌ها</h3>
+                                <h3 className="font-black text-red-700 flex items-center gap-2 px-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> بدهی‌ها و زیان‌ها</h3>
                                 <SmartStatCard title={`بدهی به تأمین‌کننده (${storeSettings.currencyConfigs[storeSettings.baseCurrency]?.name || storeSettings.baseCurrency})`} value={formatCurrency(financialPositionData.supplierPayables, storeSettings)} color="text-red-600" />
                                 {financialPositionData.netDepositLiability > 0 && (
                                     <SmartStatCard title="موجودی امانی (بدهی جاری)" value={formatCurrency(financialPositionData.netDepositLiability, storeSettings)} color="text-indigo-600" />
+                                )}
+                                {financialPositionData.totalWastage > 0 && (
+                                    <SmartStatCard title="ارزش کل ضایعات (زیان)" value={formatCurrency(financialPositionData.totalWastage, storeSettings)} color="text-orange-600" icon={<ArchiveBoxXMarkIcon />} />
                                 )}
                                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                                     <p className="text-[10px] font-black text-slate-400 uppercase mb-1">کل هزینه‌های انجام شده (از ابتدای کار)</p>
@@ -720,6 +727,73 @@ const Reports: React.FC = () => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                );
+            case 'wastage':
+                const filteredWastage = (wastageRecords || []).filter(w => {
+                    const t = new Date(w.timestamp).getTime();
+                    const inDateRange = t >= dateRange.start.getTime() && t <= dateRange.end.getTime();
+                    const matchesProduct = selectedProductId ? w.productId === selectedProductId : true;
+                    return inDateRange && matchesProduct;
+                });
+                const totalWastageCost = filteredWastage.reduce((sum, w) => sum + w.totalCost, 0);
+                
+                return (
+                    <div className="space-y-6">
+                        {/* Product Filter */}
+                        <div className="flex bg-slate-50/80 p-4 rounded-3xl border border-slate-100 shadow-sm">
+                            <div className="relative w-full md:w-64">
+                                <select 
+                                    value={selectedProductId}
+                                    onChange={(e) => setSelectedProductId(e.target.value)}
+                                    className="w-full p-3 pr-10 bg-white rounded-xl border border-slate-200 text-sm font-bold shadow-sm focus:ring-4 focus:ring-blue-50 outline-none appearance-none"
+                                >
+                                    <option value="">همه محصولات</option>
+                                    {products.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                    <SearchIcon className="w-4 h-4" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <SmartStatCard title="تعداد کل ضایعات" value={filteredWastage.reduce((sum, w) => sum + w.quantity, 0).toString()} color="text-orange-600" icon={<ArchiveBoxXMarkIcon/>} />
+                            <SmartStatCard title="ارزش کل ضایعات" value={formatCurrency(totalWastageCost, storeSettings)} color="text-red-600" icon={<AccountingIcon/>} />
+                        </div>
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-right">
+                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                            <th className="p-4 text-slate-500 font-bold text-sm">تاریخ</th>
+                                            <th className="p-4 text-slate-500 font-bold text-sm">محصول</th>
+                                            <th className="p-4 text-slate-500 font-bold text-sm">تعداد</th>
+                                            <th className="p-4 text-slate-500 font-bold text-sm">ارزش (ضرر)</th>
+                                            <th className="p-4 text-slate-500 font-bold text-sm">علت</th>
+                                            <th className="p-4 text-slate-500 font-bold text-sm">کاربر</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {filteredWastage.map(w => (
+                                            <tr key={w.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="p-4 text-sm font-medium text-slate-600">{new Date(w.timestamp).toLocaleDateString('fa-IR')}</td>
+                                                <td className="p-4 font-bold text-slate-800">{w.productName}</td>
+                                                <td className="p-4 text-orange-600 font-bold">{w.quantity}</td>
+                                                <td className="p-4 text-red-600 font-bold">{formatCurrency(w.totalCost, storeSettings)}</td>
+                                                <td className="p-4 text-sm text-slate-600 max-w-xs truncate" title={w.reason}>{w.reason}</td>
+                                                <td className="p-4 text-sm font-medium text-slate-500">{w.user}</td>
+                                            </tr>
+                                        ))}
+                                        {filteredWastage.length === 0 && (
+                                            <tr><td colSpan={6} className="p-8 text-center text-slate-500 font-medium">هیچ ضایعاتی در این بازه ثبت نشده است.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 );

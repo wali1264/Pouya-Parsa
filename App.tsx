@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
@@ -10,6 +10,7 @@ import SecurityDeposits from './pages/SecurityDeposits';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Reports from './pages/Reports';
+import Orders from './pages/Orders';
 import { AppProvider, useAppContext } from './AppContext';
 import type { Permission } from './types';
 import { MenuIcon } from './components/icons';
@@ -33,7 +34,7 @@ const AppContent: React.FC = () => {
       return null; // Should not happen if App component logic is correct
   }
   
-  const accessiblePages = {
+  const accessiblePages = useMemo(() => ({
       dashboard: hasPermission('page:dashboard'),
       inventory: hasPermission('page:inventory'),
       pos: hasPermission('page:pos'),
@@ -43,7 +44,8 @@ const AppContent: React.FC = () => {
       deposits: hasPermission('page:deposits'),
       reports: hasPermission('page:reports'),
       settings: hasPermission('page:settings'),
-  };
+      orders: hasPermission('page:orders'),
+  }), [hasPermission]);
   
     const navLabels: { [key: string]: string } = {
       dashboard: 'داشبورد',
@@ -55,17 +57,23 @@ const AppContent: React.FC = () => {
       deposits: 'امانات',
       reports: 'گزارشات',
       settings: 'تنظیمات',
+      orders: 'سفارشات',
   };
 
   // If the current active view is not accessible, switch to the first accessible one
-  if (!accessiblePages[activeView as keyof typeof accessiblePages]) {
-      const firstAccessible = Object.keys(accessiblePages).find(page => accessiblePages[page as keyof typeof accessiblePages]);
-      if (firstAccessible) {
-          setActiveView(firstAccessible);
-      } else {
-        // Handle case where user has no accessible pages
-        return <div className="flex-1 flex items-center justify-center"><p>شما به هیچ صفحه‌ای دسترسی ندارید.</p></div>
-      }
+  useEffect(() => {
+    if (!accessiblePages[activeView as keyof typeof accessiblePages]) {
+        const firstAccessible = Object.keys(accessiblePages).find(page => accessiblePages[page as keyof typeof accessiblePages]);
+        if (firstAccessible) {
+            setActiveView(firstAccessible);
+        }
+    }
+  }, [activeView, accessiblePages]);
+
+  // Handle case where user has no accessible pages
+  const hasAnyAccess = Object.values(accessiblePages).some(access => access);
+  if (!hasAnyAccess) {
+      return <div className="flex-1 flex items-center justify-center"><p>شما به هیچ صفحه‌ای دسترسی ندارید.</p></div>
   }
 
   const renderActiveView = () => {
@@ -79,6 +87,7 @@ const AppContent: React.FC = () => {
       case 'deposits': return accessiblePages.deposits && <SecurityDeposits />;
       case 'reports': return accessiblePages.reports && <Reports />;
       case 'settings': return accessiblePages.settings && <Settings />;
+      case 'orders': return accessiblePages.orders && <Orders />;
       default: return accessiblePages.dashboard && <Dashboard />;
     }
   };

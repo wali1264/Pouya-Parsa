@@ -144,9 +144,23 @@ const SuppliersTab = () => {
                                 <td className="p-4 text-lg text-slate-600">{s.phone}</td>
                                 <td className="p-4 text-md font-black" dir="ltr">
                                     <div className="flex flex-col gap-1 items-center">
-                                        <span className="text-red-600">{formatBalance(s.balanceAFN || 0)} {storeSettings.currencyConfigs['AFN']?.name || 'افغانی'}</span>
-                                        <span className="text-blue-600 border-t border-slate-100 pt-0.5">{formatBalance(s.balanceUSD || 0)} {storeSettings.currencyConfigs['USD']?.symbol || '$'}</span>
-                                        <span className="text-orange-600 border-t border-slate-100 pt-0.5">{formatBalance(s.balanceIRT || 0)} {storeSettings.currencyConfigs['IRT']?.name || 'تومان'}</span>
+                                        {[
+                                            { val: s.balanceAFN || 0, name: storeSettings.currencyConfigs['AFN']?.name || 'افغانی' },
+                                            { val: s.balanceUSD || 0, name: storeSettings.currencyConfigs['USD']?.symbol || '$' },
+                                            { val: s.balanceIRT || 0, name: storeSettings.currencyConfigs['IRT']?.name || 'تومان' }
+                                        ].map((item, idx) => (
+                                            <div key={idx} className={`flex items-center gap-2 ${idx > 0 ? 'border-t border-slate-100 pt-0.5 w-full justify-center' : ''}`}>
+                                                <span className={item.val > 0 ? 'text-red-600' : (item.val < 0 ? 'text-emerald-600' : 'text-slate-400')}>
+                                                    {formatBalance(item.val)} {item.name}
+                                                </span>
+                                                <span className="text-[10px] font-bold opacity-60">
+                                                    {item.val > 0 ? '(بدهکاریم)' : (item.val < 0 ? '(طلبکاریم)' : '(تسویه)')}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {Math.abs(s.balanceAFN || 0) === 0 && Math.abs(s.balanceUSD || 0) === 0 && Math.abs(s.balanceIRT || 0) === 0 && (
+                                            <span className="text-[10px] font-black text-emerald-600 mt-1">تسویه کامل</span>
+                                        )}
                                     </div>
                                 </td>
                                 <td className="p-4">
@@ -171,11 +185,22 @@ const SuppliersTab = () => {
                         </div>
                         <div className="mt-4 pt-4 border-t border-dashed border-slate-200 flex justify-between items-center">
                             <div className="text-right">
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">بدهی ما</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">وضعیت حساب</p>
                                 <div className="flex flex-col items-start font-black text-sm" dir="ltr">
-                                    <p className="text-red-600 text-base">{formatBalance(s.balanceAFN || 0)} {storeSettings.currencyConfigs['AFN']?.name || 'افغانی'}</p>
-                                    <p className="text-blue-600">{formatBalance(s.balanceUSD || 0)} {storeSettings.currencyConfigs['USD']?.symbol || '$'}</p>
-                                    <p className="text-orange-600">{formatBalance(s.balanceIRT || 0)} {storeSettings.currencyConfigs['IRT']?.name || 'تومان'}</p>
+                                    {[
+                                        { val: s.balanceAFN || 0, name: storeSettings.currencyConfigs['AFN']?.name || 'افغانی' },
+                                        { val: s.balanceUSD || 0, name: storeSettings.currencyConfigs['USD']?.symbol || '$' },
+                                        { val: s.balanceIRT || 0, name: storeSettings.currencyConfigs['IRT']?.name || 'تومان' }
+                                    ].map((item, idx) => (
+                                        <div key={idx} className="flex items-center gap-2">
+                                            <span className={item.val > 0 ? 'text-red-600' : (item.val < 0 ? 'text-emerald-600' : 'text-slate-400')}>
+                                                {formatBalance(item.val)} {item.name}
+                                            </span>
+                                            <span className="text-[10px] font-bold opacity-60">
+                                                {item.val > 0 ? '(بدهکاریم)' : (item.val < 0 ? '(طلبکاریم)' : '(تسویه)')}
+                                            </span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                             <button onClick={() => handleOpenPayModal(s)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-lg active:shadow-none transition-all">ثبت پرداخت</button>

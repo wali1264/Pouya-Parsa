@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Product, ProductBatch } from '../types';
 import { useAppContext } from '../AppContext';
-import { PlusIcon, EditIcon, TrashIcon, SearchIcon, ChevronDownIcon } from '../components/icons';
+import { PlusIcon, EditIcon, TrashIcon, SearchIcon, ChevronDownIcon, ArchiveBoxXMarkIcon } from '../components/icons';
 import Toast from '../components/Toast';
 import ProductModal from '../components/ProductModal';
+import WastageModal from '../components/WastageModal';
 import { formatStockToPackagesAndUnits, formatCurrency } from '../utils/formatters';
 
 
@@ -13,14 +14,16 @@ const Inventory: React.FC = () => {
         saleInvoices, purchaseInvoices, inTransitInvoices
     } = useAppContext();
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+    const [isWastageModalOpen, setIsWastageModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [wastageProduct, setWastageProduct] = useState<Product | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [toast, setToast] = useState<string>('');
     const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
     
     useEffect(() => {
-         document.body.style.overflow = isProductModalOpen ? 'hidden' : 'auto';
-    }, [isProductModalOpen]);
+         document.body.style.overflow = (isProductModalOpen || isWastageModalOpen) ? 'hidden' : 'auto';
+    }, [isProductModalOpen, isWastageModalOpen]);
 
     const showToast = (message: string) => {
         setToast(message);
@@ -35,6 +38,11 @@ const Inventory: React.FC = () => {
     const handleEditProductClick = (product: Product) => {
         setEditingProduct(product);
         setIsProductModalOpen(true);
+    };
+
+    const handleWastageClick = (product: Product) => {
+        setWastageProduct(product);
+        setIsWastageModalOpen(true);
     };
 
     const handleDeleteProduct = (productId: string) => {
@@ -133,6 +141,7 @@ const Inventory: React.FC = () => {
                                         <td className="p-4">
                                             <div className="flex justify-center items-center space-x-2 space-x-reverse">
                                                 {hasPermission('inventory:edit_product') && <button onClick={() => handleEditProductClick(product)} className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-100/50 transition-colors" title="ویرایش محصول"><EditIcon className="w-6 h-6" /></button>}
+                                                {hasPermission('inventory:edit_product') && <button onClick={() => handleWastageClick(product)} className="text-orange-500 hover:text-orange-700 p-2 rounded-full hover:bg-orange-100/50 transition-colors" title="ثبت ضایعات"><ArchiveBoxXMarkIcon className="w-6 h-6" /></button>}
                                                 {hasPermission('inventory:delete_product') && (
                                                     <button 
                                                         disabled={isUsed}
@@ -200,6 +209,7 @@ const Inventory: React.FC = () => {
                                 <h3 className="font-bold text-lg text-slate-800 mb-2">{product.name}</h3>
                                  <div className="flex items-center space-x-1 space-x-reverse">
                                     {hasPermission('inventory:edit_product') && <button onClick={() => handleEditProductClick(product)} className="text-blue-600 p-2"><EditIcon className="w-5 h-5" /></button>}
+                                    {hasPermission('inventory:edit_product') && <button onClick={() => handleWastageClick(product)} className="text-orange-500 p-2"><ArchiveBoxXMarkIcon className="w-5 h-5" /></button>}
                                     {hasPermission('inventory:delete_product') && (
                                         <button 
                                             disabled={isUsed}
@@ -226,6 +236,7 @@ const Inventory: React.FC = () => {
             </div>
 
             {isProductModalOpen && <ProductModal product={editingProduct} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} />}
+            {isWastageModalOpen && wastageProduct && <WastageModal product={wastageProduct} onClose={() => setIsWastageModalOpen(false)} />}
 
         </div>
     );

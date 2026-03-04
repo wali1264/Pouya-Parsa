@@ -4,7 +4,8 @@ import type {
     Product, ProductBatch, SaleInvoice, PurchaseInvoice, InTransitInvoice, PurchaseInvoiceItem, InvoiceItem,
     Customer, Supplier, Employee, Expense, Service, StoreSettings, CartItem,
     CustomerTransaction, SupplierTransaction, PayrollTransaction, ActivityLog,
-    User, Role, Permission, AppState, DepositHolder, DepositTransaction
+    User, Role, Permission, AppState, DepositHolder, DepositTransaction,
+    Order, OrderStatus, OrderPayment
 } from './types';
 import { api } from './services/supabaseService';
 import { supabase } from './utils/supabaseClient';
@@ -41,7 +42,15 @@ interface AppContextType extends AppState {
     addProduct: (product: Omit<Product, 'id' | 'batches'>, firstBatch: Omit<ProductBatch, 'id'>) => { success: boolean; message: string }; 
     updateProduct: (product: Product) => { success: boolean; message: string };
     deleteProduct: (productId: string) => void;
-    
+    registerWastage: (productId: string, quantity: number, reason: string) => { success: boolean; message: string };
+
+    // Orders Actions
+    addOrder: (orderData: Omit<Order, 'id' | 'createdAt' | 'payments'>) => Promise<{ success: boolean; message: string }>;
+    updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<{ success: boolean; message: string }>;
+    updateOrder: (order: Order) => Promise<{ success: boolean; message: string }>;
+    deleteOrder: (orderId: string) => Promise<{ success: boolean; message: string }>;
+    addOrderPayment: (orderId: string, amount: number) => Promise<{ success: boolean; message: string }>;
+
     // POS Actions
     addToCart: (itemToAdd: Product | Service, type: 'product' | 'service') => { success: boolean; message: string };
     updateCartItemQuantity: (itemId: string, itemType: 'product' | 'service', newQuantity: number) => { success: boolean; message: string };
@@ -128,7 +137,7 @@ const getDefaultState = (): AppState => {
             expenseCategories: ['rent', 'utilities', 'supplies', 'salary', 'other']
         },
         cart: [], customerTransactions: [], supplierTransactions: [], payrollTransactions: [],
-        activities: [], saleInvoiceCounter: 0, editingSaleInvoiceId: null, editingPurchaseInvoiceId: null,
+        activities: [], wastageRecords: [], orders: [], saleInvoiceCounter: 0, editingSaleInvoiceId: null, editingPurchaseInvoiceId: null,
         isAuthenticated: false, currentUser: null,
         users: [],
         roles: [],
@@ -164,7 +173,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const fetchData = useCallback(async (isSilent = false) => {
         if (!isSilent) setIsLoading(true);
         try {
-            const [settings, users, roles, products, services, entities, transactions, invoices, activity] = await Promise.all([
+            const [settings, users, roles, products, services, entities, transactions, invoices, activity, wastageRecords, orders] = await Promise.all([
                 api.getSettings().catch(() => ({})),
                 api.getUsers().catch(() => []),
                 api.getRoles().catch(() => []),
@@ -173,7 +182,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 api.getEntities().catch(() => ({ customers: [], suppliers: [], employees: [], expenses: [], depositHolders: [] })),
                 api.getTransactions().catch(() => ({ customerTransactions: [], supplierTransactions: [], payrollTransactions: [], depositTransactions: [] })),
                 api.getInvoices().catch(() => ({ saleInvoices: [], purchaseInvoices: [], inTransitInvoices: [] })),
-                api.getActivities().catch(() => [])
+                api.getActivities().catch(() => []),
+                api.getWastageRecords().catch(() => []),
+                api.getOrders().catch(() => [])
             ]);
 
             const isSessionLocked = localStorage.getItem('kasebyar_session_locked') === 'true';
@@ -218,6 +229,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
             }
 
+            // Patch admin-role if it exists but is missing new permissions
+            const adminRoleIndex = roles.findIndex(r => r.id === 'admin-role');
+            if (adminRoleIndex !== -1) {
+                const adminRole = roles[adminRoleIndex];
+                const newPermissions = ['page:orders', 'orders:create', 'orders:edit', 'orders:delete', 'orders:add_payment'];
+                const missingPermissions = newPermissions.filter(p => !adminRole.permissions.includes(p));
+                
+                if (missingPermissions.length > 0) {
+                    const updatedAdminRole = {
+                        ...adminRole,
+                        permissions: [...adminRole.permissions, ...missingPermissions]
+                    };
+                    roles[adminRoleIndex] = updatedAdminRole;
+                    // Save the patched role back to DB in the background
+                    api.updateRole(updatedAdminRole).catch(console.error);
+                }
+            }
+
             setState(prev => {
                 const mergedSettings = (settings as StoreSettings).storeName ? { ...prev.storeSettings, ...settings } : prev.storeSettings;
                 
@@ -236,7 +265,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     ...prev,
                     storeSettings: mergedSettings,
                     users,
-                    roles: roles.length > 0 ? roles : [{ id: 'admin-role', name: 'Admin', permissions: ['page:dashboard', 'page:inventory', 'page:pos', 'page:purchases', 'page:accounting', 'page:reports', 'page:settings', 'page:in_transit', 'page:deposits'] }],
+                    roles: roles.length > 0 ? roles : [{ id: 'admin-role', name: 'Admin', permissions: ['page:dashboard', 'page:inventory', 'page:pos', 'page:purchases', 'page:accounting', 'page:reports', 'page:settings', 'page:in_transit', 'page:deposits', 'page:orders', 'orders:create', 'orders:edit', 'orders:delete', 'orders:add_payment'] }],
                     products, services, customers: entities.customers, suppliers: entities.suppliers,
                     employees: entities.employees, expenses: entities.expenses,
                     depositHolders: entities.depositHolders, depositTransactions: transactions.depositTransactions,
@@ -247,6 +276,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     purchaseInvoices: invoices.purchaseInvoices,
                     inTransitInvoices: invoices.inTransitInvoices,
                     activities: activity,
+                    wastageRecords: wastageRecords,
+                    orders: orders,
                     isAuthenticated: isAuth,
                     currentUser: restoredUser
                 };
@@ -452,6 +483,178 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: true, message: 'ویرایش شد.' }; 
     };
     const deleteProduct = (id: string) => { api.deleteProduct(id).then(() => setState(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) }))); };
+
+    const registerWastage = (productId: string, quantity: number, reason: string) => {
+        let success = false;
+        let message = '';
+
+        setState(prevState => {
+            const productIndex = prevState.products.findIndex(p => p.id === productId);
+            if (productIndex === -1) return prevState;
+
+            const product = prevState.products[productIndex];
+            const totalStock = product.batches.reduce((sum, b) => sum + b.stock, 0);
+
+            if (quantity > totalStock) {
+                message = 'مقدار ضایعات نمی‌تواند بیشتر از موجودی باشد.';
+                return prevState;
+            }
+
+            let remainingWastage = quantity;
+            let totalWastageCost = 0;
+            // Create a deep copy of batches to prevent double deduction in React StrictMode
+            const updatedBatches = product.batches.map(b => ({ ...b })).sort((a, b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
+
+            for (let i = 0; i < updatedBatches.length && remainingWastage > 0; i++) {
+                const batch = updatedBatches[i];
+                if (batch.stock > 0) {
+                    const deductAmount = Math.min(batch.stock, remainingWastage);
+                    batch.stock -= deductAmount;
+                    remainingWastage -= deductAmount;
+                    totalWastageCost += (deductAmount * batch.purchasePrice);
+                }
+            }
+
+            const updatedProduct = { ...product, batches: updatedBatches };
+            const updatedProducts = [...prevState.products];
+            updatedProducts[productIndex] = updatedProduct;
+
+            const newWastageRecord = {
+                id: Date.now().toString(),
+                productId: product.id,
+                productName: product.name,
+                quantity: quantity,
+                totalCost: totalWastageCost,
+                reason: reason,
+                timestamp: new Date().toISOString(),
+                user: prevState.currentUser?.username || 'System'
+            };
+
+            success = true;
+            message = 'ضایعات با موفقیت ثبت شد.';
+
+            api.updateProduct(updatedProduct);
+            api.addWastageRecord(newWastageRecord);
+            
+            const activityLog: ActivityLog = {
+                id: Date.now().toString(),
+                type: 'wastage',
+                description: `ثبت ${quantity} عدد ضایعات برای ${product.name}`,
+                timestamp: new Date().toISOString(),
+                user: prevState.currentUser?.username || 'System',
+                refId: newWastageRecord.id,
+                refType: 'wastageRecord'
+            };
+            api.addActivity(activityLog);
+
+            return {
+                ...prevState,
+                products: updatedProducts,
+                wastageRecords: [newWastageRecord, ...(prevState.wastageRecords || [])],
+                activities: [activityLog, ...prevState.activities]
+            };
+        });
+
+        return { success, message };
+    };
+
+    // --- Orders Functions ---
+    const addOrder = async (orderData: Omit<Order, 'id' | 'createdAt' | 'payments'>) => {
+        if (!hasPermission('orders:create')) return { success: false, message: 'عدم دسترسی' };
+        
+        const newOrder: Order = {
+            ...orderData,
+            id: Date.now().toString(),
+            createdAt: new Date().toISOString(),
+            payments: []
+        };
+
+        await api.addOrder(newOrder);
+        
+        setState(prev => ({
+            ...prev,
+            orders: [newOrder, ...prev.orders]
+        }));
+        
+        return { success: true, message: 'سفارش با موفقیت ثبت شد.' };
+    };
+
+    const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
+        if (!hasPermission('orders:edit')) return { success: false, message: 'عدم دسترسی' };
+        
+        const order = state.orders.find(o => o.id === orderId);
+        if (!order) return { success: false, message: 'سفارش یافت نشد.' };
+        
+        const updatedOrder = { ...order, status };
+        await api.updateOrder(updatedOrder);
+        
+        setState(prev => ({
+            ...prev,
+            orders: prev.orders.map(o => o.id === orderId ? updatedOrder : o)
+        }));
+        
+        return { success: true, message: 'وضعیت سفارش بروزرسانی شد.' };
+    };
+
+    const updateOrder = async (updatedOrder: Order) => {
+        if (!hasPermission('orders:edit')) return { success: false, message: 'عدم دسترسی' };
+        
+        await api.updateOrder(updatedOrder);
+        
+        setState(prev => ({
+            ...prev,
+            orders: prev.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o)
+        }));
+        
+        return { success: true, message: 'سفارش با موفقیت بروزرسانی شد.' };
+    };
+
+    const deleteOrder = async (orderId: string) => {
+        if (!hasPermission('orders:delete')) return { success: false, message: 'عدم دسترسی' };
+        
+        await api.deleteOrder(orderId);
+        
+        setState(prev => ({
+            ...prev,
+            orders: prev.orders.filter(o => o.id === orderId)
+        }));
+        
+        return { success: true, message: 'سفارش حذف شد.' };
+    };
+
+    const addOrderPayment = async (orderId: string, amount: number) => {
+        if (!hasPermission('orders:add_payment')) return { success: false, message: 'عدم دسترسی' };
+        
+        const order = state.orders.find(o => o.id === orderId);
+        if (!order) return { success: false, message: 'سفارش یافت نشد.' };
+        
+        const totalPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+        const remaining = order.totalAmount - totalPaid;
+        
+        if (amount > remaining) {
+            return { success: false, message: `مبلغ پرداختی نمی‌تواند بیشتر از بدهی ( ${remaining} ) باشد.` };
+        }
+        
+        const newPayment: OrderPayment = {
+            id: Date.now().toString(),
+            amount,
+            date: new Date().toISOString()
+        };
+        
+        const updatedOrder = {
+            ...order,
+            payments: [...order.payments, newPayment]
+        };
+        
+        await api.updateOrder(updatedOrder);
+        
+        setState(prev => ({
+            ...prev,
+            orders: prev.orders.map(o => o.id === orderId ? updatedOrder : o)
+        }));
+        
+        return { success: true, message: 'پرداخت با موفقیت ثبت شد.' };
+    };
 
     const addToCart = (item: any, type: any) => {
         let success = true;
@@ -1425,7 +1628,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         else if (c === 'IRT') newH.balanceIRT += factor * a; 
         else newH.balanceAFN += factor * a;
         
-        newH.balance = (newH.balance || 0) + (factor * baseAmount);
+        newH.balance = (newH.balance !== undefined ? newH.balance : 0) + (factor * baseAmount);
 
         await api.updateDepositHolder(newH);
         await api.addDepositTransaction(tx);
@@ -1447,7 +1650,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return <AppContext.Provider value={{
         ...state, showToast, isLoading, isLoggingOut, isShopActive, login, signup, logout, hasPermission, addUser, updateUser, deleteUser, addRole, updateRole, deleteRole, exportData, importData,
         cloudBackup, cloudRestore, autoBackupEnabled, setAutoBackupEnabled,
-        addProduct, updateProduct, deleteProduct, addToCart, updateCartItemQuantity, updateCartItemFinalPrice, removeFromCart, completeSale,
+        addProduct, updateProduct, deleteProduct, registerWastage, addOrder, updateOrderStatus, updateOrder, deleteOrder, addOrderPayment, addToCart, updateCartItemQuantity, updateCartItemFinalPrice, removeFromCart, completeSale,
         beginEditSale, cancelEditSale, addSaleReturn, addPurchaseInvoice, beginEditPurchase, cancelEditPurchase, updatePurchaseInvoice, addPurchaseReturn,
         addInTransitInvoice, updateInTransitInvoice, deleteInTransitInvoice, archiveInTransitInvoice, moveInTransitItems, addInTransitPayment,
         updateSettings, addService, deleteService, addSupplier, deleteSupplier, addSupplierPayment, addCustomer, deleteCustomer, addCustomerPayment,

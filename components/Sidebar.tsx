@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DashboardIcon, InventoryIcon, POSIcon, PurchaseIcon, TruckIcon, AccountingIcon, SettingsIcon, LogoutIcon, ReportsIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon, UserGroupIcon, XIcon, SafeIcon } from './icons';
+import { DashboardIcon, InventoryIcon, POSIcon, PurchaseIcon, TruckIcon, AccountingIcon, SettingsIcon, LogoutIcon, ReportsIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon, UserGroupIcon, XIcon, SafeIcon, ClipboardDocumentListIcon } from './icons';
 import { useAppContext } from '../AppContext';
 
 interface SidebarProps {
@@ -41,6 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, storeName,
     { id: 'dashboard', label: 'داشبورد', icon: <DashboardIcon />, visible: accessiblePages.dashboard },
     { id: 'inventory', label: 'انبارداری', icon: <InventoryIcon />, visible: accessiblePages.inventory },
     { id: 'pos', label: 'فروش', icon: <POSIcon />, visible: accessiblePages.pos },
+    { id: 'orders', label: 'سفارشات', icon: <ClipboardDocumentListIcon />, visible: accessiblePages.orders },
     { id: 'purchases', label: 'خرید', icon: <PurchaseIcon />, visible: accessiblePages.purchases },
     { id: 'in_transit', label: 'اجناس در راه', icon: <TruckIcon />, visible: accessiblePages.in_transit },
     { id: 'accounting', label: 'حسابداری', icon: <AccountingIcon />, visible: accessiblePages.accounting },

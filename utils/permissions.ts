@@ -9,6 +9,13 @@ export const ALL_PERMISSIONS = [
     { id: 'page:deposits', name: 'مشاهده امانات', group: 'صفحات' },
     { id: 'page:reports', name: 'مشاهده گزارشات', group: 'صفحات' },
     { id: 'page:settings', name: 'مشاهده تنظیمات', group: 'صفحات' },
+    { id: 'page:orders', name: 'مشاهده سفارشات', group: 'صفحات' },
+
+    // Orders
+    { id: 'orders:create', name: 'ثبت سفارش جدید', group: 'سفارشات' },
+    { id: 'orders:edit', name: 'ویرایش وضعیت سفارش', group: 'سفارشات' },
+    { id: 'orders:delete', name: 'حذف سفارش', group: 'سفارشات' },
+    { id: 'orders:add_payment', name: 'ثبت پرداخت سفارش', group: 'سفارشات' },
 
     // Inventory
     { id: 'inventory:add_product', name: 'افزودن محصول', group: 'انبارداری' },
